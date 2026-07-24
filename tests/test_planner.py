@@ -46,6 +46,60 @@ def test_subtitle_associated_with_episode(tmp_path: Path) -> None:
     assert operation.target == tmp_path / "series/Show/Season 01/Show S01E01.pt-BR.srt"
 
 
+@pytest.mark.parametrize(
+    ("filename", "target_name"),
+    [
+        ("Show.S01E01.pt-BR.forced.srt", "Show S01E01.pt-BR.forced.srt"),
+        ("Show.S01E01.en.sdh.srt", "Show S01E01.en.sdh.srt"),
+        ("Show.S01E01.en.sdh.cc.srt", "Show S01E01.en.sdh.cc.srt"),
+        ("Show.S01E01.forced.srt", "Show S01E01.forced.srt"),
+    ],
+)
+def test_episode_subtitle_qualifiers(tmp_path: Path, filename: str, target_name: str) -> None:
+    touch(tmp_path, "Show.S01E01.mkv")
+    subtitle = touch(tmp_path, filename)
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    operation = next(item for item in plan if item.source == subtitle)
+    assert operation.target == tmp_path / "series/Show/Season 01" / target_name
+
+
+def test_subtitles_with_different_flags_have_different_targets(tmp_path: Path) -> None:
+    touch(tmp_path, "Show.S01E01.mkv")
+    first = touch(tmp_path, "Show.S01E01.en.sdh.srt")
+    second = touch(tmp_path, "Show.S01E01.en.cc.srt")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    subtitles = [item for item in plan if item.source in {first, second}]
+    assert {item.target.name for item in subtitles if item.target} == {
+        "Show S01E01.en.sdh.srt",
+        "Show S01E01.en.cc.srt",
+    }
+    assert all(item.status is OperationStatus.PLANNED for item in subtitles)
+
+
+def test_subtitles_with_same_normalized_target_are_conflicts(tmp_path: Path) -> None:
+    touch(tmp_path, "Show.S01E01.mkv")
+    first = touch(tmp_path, "Show.S01E01.en.sdh.srt")
+    second = touch(tmp_path, "Show.S01E01.English.sdh.srt")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    subtitles = [item for item in plan if item.source in {first, second}]
+    assert len({item.target for item in subtitles}) == 1
+    assert all(item.status is OperationStatus.CONFLICT for item in subtitles)
+
+
+def test_movie_subtitle_with_language_and_flag(tmp_path: Path) -> None:
+    touch(tmp_path, "Movie.Name.2020.mkv")
+    subtitle = touch(tmp_path, "Movie.Name.2020.en.forced.srt")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    operation = next(item for item in plan if item.source == subtitle)
+    assert operation.target == (
+        tmp_path / "movies/Movie Name (2020)/Movie Name (2020).en.forced.srt"
+    )
+
+
 def test_unknown_file(tmp_path: Path) -> None:
     unknown = touch(tmp_path, "video-final-novo.mkv")
     operation = build_plan(scan_files(make_config(tmp_path)), make_config(tmp_path))[0]

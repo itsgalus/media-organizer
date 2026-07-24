@@ -54,6 +54,7 @@ class Subtitle:
     extension: str
     movie: Movie | None = None
     episode: Episode | None = None
+    flags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

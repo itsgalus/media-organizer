@@ -45,8 +45,9 @@ def episode_target(config: Config, episode: Episode) -> Path:
 
 
 def _subtitle_target(base_target: Path, subtitle: Subtitle) -> Path:
-    language = f".{subtitle.language}" if subtitle.language else ""
-    return base_target.with_name(f"{base_target.stem}{language}{subtitle.extension}")
+    qualifiers = tuple(filter(None, (subtitle.language, *subtitle.flags)))
+    suffix = f".{'.'.join(qualifiers)}" if qualifiers else ""
+    return base_target.with_name(f"{base_target.stem}{suffix}{subtitle.extension}")
 
 
 def _operation(

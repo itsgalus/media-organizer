@@ -9,13 +9,19 @@ from media_organizer.parser import parse_episode, parse_movie
 LANGUAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
-            r"(?i)(?:^|[._ -])(?:portuguese[._ -]?brazil|pt[._ -]?br|brazilian)(?:$|[._ -])"
+            r"(?i)(?:^|[._ -])"
+            r"(?:portuguese[._ -]?brazil|portuguese|pt[._-]?br|ptb|pob|por|"
+            r"brazilian|brazil|br|pt)"
+            r"(?=$|[._ -])"
         ),
         "pt-BR",
     ),
-    (re.compile(r"(?i)(?:^|[._ -])(?:portuguese|pt)(?:$|[._ -])"), "pt-BR"),
-    (re.compile(r"(?i)(?:^|[._ -])(?:english|eng|en)(?:$|[._ -])"), "en"),
+    (
+        re.compile(r"(?i)(?:^|[._ -])(?:english|eng|en[._-]?us|en)(?=$|[._ -])"),
+        "en",
+    ),
 )
+FLAG_PATTERN = re.compile(r"(?i)(?:^|[._ -])(?P<flag>forced|sdh|cc)(?=$|[._ -])")
 
 
 def identify_language(stem: str) -> str | None:
@@ -25,15 +31,35 @@ def identify_language(stem: str) -> str | None:
     return None
 
 
+def identify_flags(stem: str) -> tuple[str, ...]:
+    flags: list[str] = []
+    for match in FLAG_PATTERN.finditer(stem):
+        flag = match.group("flag").lower()
+        if flag not in flags:
+            flags.append(flag)
+    return tuple(flags)
+
+
 def parse_subtitle(path: Path) -> Subtitle | None:
     language = identify_language(path.stem)
+    flags = identify_flags(path.stem)
     episode = parse_episode(path)
     if episode is not None:
-        return Subtitle(language=language, extension=path.suffix.lower(), episode=episode)
+        return Subtitle(
+            language=language,
+            extension=path.suffix.lower(),
+            episode=episode,
+            flags=flags,
+        )
     movie = parse_movie(path)
     if movie is not None:
-        return Subtitle(language=language, extension=path.suffix.lower(), movie=movie)
-    return None
+        return Subtitle(
+            language=language,
+            extension=path.suffix.lower(),
+            movie=movie,
+            flags=flags,
+        )
+    return Subtitle(language=language, extension=path.suffix.lower(), flags=flags)
 
 
 def compatible_subtitle(subtitle: Subtitle, movie: Movie | None, episode: Episode | None) -> bool:
