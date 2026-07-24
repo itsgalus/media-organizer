@@ -77,6 +77,56 @@ media-organizer --config config.toml doctor
 
 Use `--verbose` antes do subcomando para logs adicionais.
 
+## Uso real
+
+Comece sempre com uma biblioteca de teste e revise o plano antes de mover
+arquivos:
+
+```bash
+cp config.example.toml config.toml
+media-organizer --config config.toml doctor
+media-organizer --config config.toml scan
+media-organizer --config config.toml apply
+media-organizer --config config.toml apply --yes
+media-organizer --config config.toml --quiet scan
+media-organizer --config config.toml --verbose scan
+```
+
+`scan` apenas analisa e mostra o plano; `apply` realiza os movimentos seguros.
+Use `--yes` para pular a confirmação interativa e `--quiet` para ocultar as
+operações individuais. `--verbose` controla o detalhamento dos logs no stderr,
+enquanto `--quiet` reduz somente a saída normal no stdout.
+
+### Teste manual controlado
+
+O exemplo abaixo cria uma biblioteca descartável em `/tmp` e executa somente
+diagnóstico e scan:
+
+```bash
+rm -rf /tmp/media-organizer-demo
+mkdir -p /tmp/media-organizer-demo/incoming
+
+touch "/tmp/media-organizer-demo/incoming/Interstellar.2014.1080p.mkv"
+touch "/tmp/media-organizer-demo/incoming/Show.S01E01.mkv"
+touch "/tmp/media-organizer-demo/incoming/Show.S01E01.pt-BR.srt"
+
+cat > /tmp/media-organizer-demo/config.toml <<'EOF'
+media_root = "/tmp/media-organizer-demo"
+incoming_dir = "incoming"
+movies_dir = "movies"
+series_dir = "series"
+EOF
+
+media-organizer --config /tmp/media-organizer-demo/config.toml doctor
+media-organizer --config /tmp/media-organizer-demo/config.toml scan
+```
+
+Depois de revisar o plano, o apply pode ser executado separadamente:
+
+```bash
+media-organizer --config /tmp/media-organizer-demo/config.toml apply
+```
+
 ## Nomenclatura
 
 Filmes são organizados como:

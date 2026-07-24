@@ -15,50 +15,110 @@ from media_organizer.scanner import scan_files
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="media-organizer")
-    parser.add_argument("--config", type=Path, default=Path("config.toml"))
-    parser.add_argument("--verbose", action="store_true")
+    parser = argparse.ArgumentParser(
+        prog="media-organizer",
+        description=(
+            "Organiza mídia local com segurança: scan apenas planeja, apply move arquivos "
+            "e doctor diagnostica configuração e filesystem."
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config.toml"),
+        help="arquivo TOML de configuração (padrão: config.toml)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="mostra logs detalhados no stderr",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="omite operações individuais, mas mantém o resumo",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("scan", help="mostra o plano sem alterar arquivos")
-    apply_parser = commands.add_parser("apply", help="executa operações seguras")
-    apply_parser.add_argument("--yes", action="store_true", help="não pede confirmação")
-    commands.add_parser("doctor", help="diagnostica configuração e filesystem")
+    commands.add_parser(
+        "scan",
+        help="analisa incoming e mostra o plano sem mover arquivos",
+        description="Analisa incoming e exibe o plano proposto. Nenhum arquivo é alterado.",
+    )
+    apply_parser = commands.add_parser(
+        "apply",
+        help="mostra o plano e move operações autorizadas",
+        description="Analisa, mostra o plano, confirma e move apenas operações sem conflito.",
+    )
+    apply_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="executa sem pedir confirmação interativa",
+    )
+    commands.add_parser(
+        "doctor",
+        help="diagnostica configuração, diretórios e filesystem",
+        description="Verifica configuração, diretórios, permissões, espaço e filesystem.",
+    )
     return parser
 
 
 def _configure_logging(verbose: bool) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s level=%(levelname)s logger=%(name)s message=%(message)s",
-    )
+    level = logging.INFO if verbose else logging.WARNING
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s level=%(levelname)s logger=%(name)s message=%(message)s",
+        )
+    else:
+        root_logger.setLevel(level)
 
 
-def _load(path: Path) -> Config:
+def _display_path(path: Path, config: Config) -> str:
     try:
-        return load_config(path)
-    except ConfigurationError as exc:
-        raise SystemExit(f"Erro de configuração: {exc}") from exc
+        return str(path.resolve(strict=False).relative_to(config.media_root.resolve(strict=False)))
+    except ValueError:
+        return str(path)
 
 
-def _render_plan(operations: list[PlannedOperation]) -> None:
+def _render_plan(operations: list[PlannedOperation], config: Config) -> None:
     for operation in operations:
-        print(operation.media_type.value)
-        print(f"  Source: {operation.source}")
+        label = (
+            "CONFLICT"
+            if operation.status is OperationStatus.CONFLICT
+            else operation.media_type.value
+        )
+        print(f"{label:<10} {_display_path(operation.source, config)}")
         if operation.target:
-            print(f"  Target: {operation.target}")
-        if operation.conflict:
-            print(f"  Conflict: {operation.conflict.reason}")
+            target = _display_path(operation.target, config)
+            suffix = f" | {operation.conflict.reason}" if operation.conflict else ""
+            print(f"{'':<10} -> {target}{suffix}")
+        if operation.conflict and operation.target is None:
+            print(f"{'':<10} | {operation.conflict.reason}")
         if operation.error:
-            print(f"  Error: {operation.error}")
-        print()
+            print(f"{'':<10} | {operation.error}")
+
+
+def _render_summary(operations: list[PlannedOperation], *, include_execution: bool = False) -> None:
     counts = {kind: sum(op.media_type is kind for op in operations) for kind in MediaType}
     conflicts = sum(op.status is OperationStatus.CONFLICT for op in operations)
+    planned = sum(op.status is OperationStatus.PLANNED for op in operations)
     print("Summary:")
     print(f"  Movies: {counts[MediaType.MOVIE]}")
     print(f"  Episodes: {counts[MediaType.EPISODE]}")
     print(f"  Subtitles: {counts[MediaType.SUBTITLE]}")
     print(f"  Unknown: {counts[MediaType.UNKNOWN]}")
     print(f"  Conflicts: {conflicts}")
+    print(f"  Planned: {planned}")
+    if include_execution:
+        moved = sum(op.status is OperationStatus.MOVED for op in operations)
+        failed = sum(op.status is OperationStatus.FAILED for op in operations)
+        skipped = sum(
+            op.status in {OperationStatus.SKIPPED, OperationStatus.CONFLICT} for op in operations
+        )
+        print(f"  Moved: {moved}")
+        print(f"  Failed: {failed}")
+        print(f"  Skipped: {skipped}")
 
 
 def _doctor(config: Config) -> int:
@@ -95,7 +155,7 @@ def _doctor(config: Config) -> int:
     )
     for label, ok, detail in checks:
         print(f"{'OK' if ok else 'FAIL'}  {label}: {detail}")
-    return 0 if all(ok for _, ok, _ in checks) else 1
+    return 0 if all(ok for _, ok, _ in checks) else 3
 
 
 def _suspicious_links(config: Config) -> list[Path]:
@@ -114,32 +174,60 @@ def _suspicious_links(config: Config) -> list[Path]:
     return suspicious
 
 
-def main(argv: list[str] | None = None) -> int:
+def _confirm_apply(operations: list[PlannedOperation]) -> bool:
+    planned = sum(op.status is OperationStatus.PLANNED for op in operations)
+    conflicts = sum(op.status is OperationStatus.CONFLICT for op in operations)
+    ignored = sum(op.status is OperationStatus.SKIPPED for op in operations)
+    print(f"{planned} arquivo(s) serão movidos.")
+    print(f"{ignored} arquivo(s) serão ignorados.")
+    print(f"{conflicts} conflito(s) não será executado.")
+    try:
+        answer = input("Continuar? [y/N] ")
+    except EOFError:
+        answer = ""
+    return answer.strip().casefold() in {"y", "yes", "s", "sim"}
+
+
+def _run(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
-    config = _load(args.config)
+    config = load_config(args.config)
     if args.command == "doctor":
         return _doctor(config)
 
     operations = build_plan(scan_files(config), config)
-    _render_plan(operations)
+    if not args.quiet:
+        _render_plan(operations, config)
+    _render_summary(operations)
     if args.command == "scan":
         return 0
+
     runnable = sum(op.status is OperationStatus.PLANNED for op in operations)
     if not runnable:
-        print("\nNenhuma operação segura para executar.")
+        if not args.quiet:
+            print("Nenhuma operação segura para executar.")
+        _render_summary(operations, include_execution=True)
         return 0
-    if not args.yes:
-        try:
-            answer = input(f"\nMover {runnable} arquivo(s)? [y/N] ")
-        except EOFError:
-            answer = ""
-        if answer.strip().casefold() not in {"y", "yes", "s", "sim"}:
+
+    if not args.yes and not _confirm_apply(operations):
+        if not args.quiet:
             print("Operação cancelada.")
-            return 0
+        return 0
+
     result = apply_plan(operations, config)
-    print(f"\nApply: moved={result.moved} failed={result.failed} skipped={result.skipped}")
+    _render_summary(result.operations, include_execution=True)
     return 1 if result.failed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _run(argv)
+    except ConfigurationError as exc:
+        print(f"Erro de configuração: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("Operação interrompida pelo usuário.", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
