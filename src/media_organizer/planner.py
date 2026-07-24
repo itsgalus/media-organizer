@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from media_organizer.config import Config
@@ -66,7 +67,7 @@ def _operation(
     return operation
 
 
-def build_plan(files: list[FoundFile], config: Config) -> list[PlannedOperation]:
+def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperation]:
     operations: list[PlannedOperation] = []
     recognized: list[tuple[Movie | None, Episode | None, Path]] = []
     subtitles: list[FoundFile] = []

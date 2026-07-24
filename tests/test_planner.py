@@ -152,7 +152,7 @@ def test_scanner_ignores_symlinks(tmp_path: Path) -> None:
     outside = tmp_path / "outside.mkv"
     outside.write_bytes(b"outside")
     (incoming / "linked.mkv").symlink_to(outside)
-    assert scan_files(make_config(tmp_path)) == []
+    assert list(scan_files(make_config(tmp_path))) == []
 
 
 def test_manually_supplied_outside_source_is_conflict(tmp_path: Path) -> None:

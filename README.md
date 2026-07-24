@@ -54,8 +54,14 @@ O comando seguro e padrão para inspeção é:
 media-organizer --config config.toml scan
 ```
 
-Ele não cria diretórios, move, renomeia ou remove arquivos. Para aplicar apenas
-as operações sem conflito:
+Ele não cria diretórios, move, renomeia ou remove arquivos.
+
+A varredura percorre `incoming` recursivamente e considera somente as extensões
+de vídeo e legenda configuradas. Arquivos e diretórios ocultos, além de links
+simbólicos, são ignorados. Itens auxiliares como JPG, NFO, TXT e ZIP permanecem
+intactos e não entram no pipeline.
+
+Para aplicar apenas as operações sem conflito:
 
 ```bash
 media-organizer --config config.toml apply
