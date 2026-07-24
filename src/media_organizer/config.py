@@ -6,6 +6,7 @@ from pathlib import Path
 
 DEFAULT_VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v")
 DEFAULT_SUBTITLE_EXTENSIONS = (".srt", ".ass", ".ssa", ".vtt", ".sub")
+DIRECTORY_FIELDS = ("incoming_dir", "movies_dir", "series_dir")
 
 
 class ConfigurationError(ValueError):
@@ -25,11 +26,14 @@ class Config:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "media_root", self.media_root.expanduser().absolute())
-        for name in ("incoming_dir", "movies_dir", "series_dir"):
-            value = getattr(self, name)
-            path = Path(value)
-            if not value or path.is_absolute() or ".." in path.parts:
-                raise ConfigurationError(f"{name} deve ser um caminho relativo seguro")
+        directories = {
+            field_name: _normalize_relative_directory(field_name, getattr(self, field_name))
+            for field_name in DIRECTORY_FIELDS
+        }
+        _validate_directory_layout(directories)
+        for field_name, value in directories.items():
+            object.__setattr__(self, field_name, value)
+
         for name in ("video_extensions", "subtitle_extensions"):
             values = getattr(self, name)
             if not values:
@@ -48,6 +52,47 @@ class Config:
     @property
     def series_path(self) -> Path:
         return self.media_root / self.series_dir
+
+
+def _normalize_relative_directory(field_name: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise ConfigurationError(
+            f"{field_name} possui tipo inválido: esperado string, recebido {type(value).__name__}"
+        )
+    if not value.strip():
+        raise ConfigurationError(f"{field_name} não pode ser uma string vazia")
+
+    path = Path(value)
+    if path.is_absolute():
+        raise ConfigurationError(f"{field_name} não pode ser um caminho absoluto")
+    if ".." in path.parts:
+        raise ConfigurationError(f"{field_name} não pode conter o componente '..'")
+
+    normalized = Path(*path.parts).as_posix()
+    if normalized == ".":
+        raise ConfigurationError(f"{field_name} não pode ser igual ao diretório raiz")
+    return normalized
+
+
+def _validate_directory_layout(directories: dict[str, str]) -> None:
+    items = list(directories.items())
+    for index, (first_name, first_value) in enumerate(items):
+        first_parts = Path(first_value).parts
+        for second_name, second_value in items[index + 1 :]:
+            second_parts = Path(second_value).parts
+            if first_parts == second_parts:
+                raise ConfigurationError(
+                    f"diretórios iguais: {first_name} e {second_name} apontam para {first_value}"
+                )
+            if _is_parent(first_parts, second_parts) or _is_parent(second_parts, first_parts):
+                raise ConfigurationError(
+                    f"diretórios aninhados: {first_name}={first_value} e "
+                    f"{second_name}={second_value}"
+                )
+
+
+def _is_parent(parent: tuple[str, ...], child: tuple[str, ...]) -> bool:
+    return len(parent) < len(child) and child[: len(parent)] == parent
 
 
 def _normalize_extension(value: object) -> str:
