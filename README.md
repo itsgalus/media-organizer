@@ -1,0 +1,150 @@
+# media-organizer
+
+Organizador local de arquivos de mídia para bibliotecas Plex no Linux. A primeira
+versão reconhece filmes, episódios de séries e suas legendas, cria um plano
+auditável e só move arquivos depois de autorização explícita. Não usa rede, APIs,
+banco de dados ou serviços externos.
+
+## Requisitos e instalação
+
+- Python 3.12 ou superior
+- Linux (os exemplos funcionam no Linux Mint)
+
+```bash
+git clone <url-do-repositorio> media-organizer
+cd media-organizer
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+```
+
+O pacote instala o comando `media-organizer`. Também é possível executar
+`python -m media_organizer`.
+
+## Configuração
+
+Copie o exemplo e ajuste somente caminhos pertencentes à biblioteca:
+
+```bash
+cp config.example.toml config.toml
+```
+
+```toml
+media_root = "/mnt/media"
+incoming_dir = "incoming"
+movies_dir = "movies"
+series_dir = "series"
+
+video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".m4v"]
+subtitle_extensions = [".srt", ".ass", ".ssa", ".vtt", ".sub"]
+
+preserve_technical_tags_for_movies = true
+preserve_technical_tags_for_series = false
+```
+
+Os diretórios configurados devem ser relativos a `media_root`; caminhos
+absolutos e componentes `..` são rejeitados.
+
+## Comandos
+
+O comando seguro e padrão para inspeção é:
+
+```bash
+media-organizer --config config.toml scan
+```
+
+Ele não cria diretórios, move, renomeia ou remove arquivos. Para aplicar apenas
+as operações sem conflito:
+
+```bash
+media-organizer --config config.toml apply
+media-organizer --config config.toml apply --yes
+```
+
+Sem `--yes`, é exigida confirmação interativa. Para diagnosticar diretórios,
+permissões, espaço, filesystem e links suspeitos:
+
+```bash
+media-organizer --config config.toml doctor
+```
+
+Use `--verbose` antes do subcomando para logs adicionais.
+
+## Nomenclatura
+
+Filmes são organizados como:
+
+```text
+movies/Interstellar (2014)/Interstellar (2014) [2160p HDR BluRay REMUX].mkv
+```
+
+O ano é obrigatório. Tags técnicas conhecidas são preservadas quando habilitado,
+mas grupos de release, hashes, URLs e ruído não são propagados.
+
+Episódios `S01E01`, `s01e01`, `1x01` e `S01E01E02` são aceitos:
+
+```text
+series/Show Name/Season 01/Show Name S01E01.mkv
+series/Show Name/Season 01/Show Name S01E01-E02.mkv
+```
+
+Tags técnicas não entram no nome final dos episódios. Legendas compatíveis são
+colocadas ao lado do vídeo. Português, português brasileiro, `pt` e `pt-BR`
+viram `pt-BR`; inglês, `eng` e `en` viram `en`. Um idioma desconhecido não é
+inventado.
+
+## Segurança
+
+- `scan` é somente leitura.
+- A origem e o destino são validados dentro da raiz configurada.
+- Links simbólicos de arquivo não são seguidos; links que escapam da raiz são
+  reportados pelo `doctor`.
+- Destinos existentes e destinos duplicados são conflitos e nunca são
+  sobrescritos.
+- O estado é revalidado imediatamente antes de cada movimento.
+- `rename` é usado no mesmo filesystem. Entre filesystems, a cópia usa criação
+  exclusiva, sincronização e só então remove a origem.
+- Não há exclusão, substituição nem deduplicação destrutiva.
+- Uma falha é registrada e as operações independentes podem continuar.
+
+Mantenha backups: embora conservador, `apply` realiza movimentos reais.
+
+## Limitações
+
+Esta versão usa apenas heurísticas locais de nomes. Não consulta metadados,
+portanto não resolve títulos ambíguos, filmes sem ano, ordem absoluta de anime,
+extras, temporadas especiais ou categorias `anime`, `cartoons` e
+`documentaries`. Arquivos não reconhecidos ficam em `incoming` como `UNKNOWN`.
+
+## Testes
+
+```bash
+source .venv/bin/activate
+pytest
+```
+
+Os testes usam diretórios temporários e não pressupõem a existência de
+`/mnt/media`.
+
+## Desenvolvimento
+
+Os comandos usuais de desenvolvimento são padronizados pelo `Makefile`:
+
+```bash
+make install
+make lint
+make format
+make format-check
+make test
+make check
+make clean
+```
+
+`make install` instala o projeto e suas dependências de desenvolvimento no
+`.venv`. `make check` executa lint, verificação de formatação e testes. `make
+clean` remove somente caches Python e artefatos locais de build, sem remover o
+ambiente virtual ou a configuração local.
+
+Diretórios `__pycache__`, `.pytest_cache` e `*.egg-info` podem existir
+localmente durante o desenvolvimento, mas são ignorados pelo Git.

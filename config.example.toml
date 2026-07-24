@@ -1,0 +1,24 @@
+media_root = "/mnt/media"
+incoming_dir = "incoming"
+movies_dir = "movies"
+series_dir = "series"
+
+video_extensions = [
+  ".mkv",
+  ".mp4",
+  ".avi",
+  ".mov",
+  ".m4v"
+]
+
+subtitle_extensions = [
+  ".srt",
+  ".ass",
+  ".ssa",
+  ".vtt",
+  ".sub"
+]
+
+preserve_technical_tags_for_movies = true
+preserve_technical_tags_for_series = false
+
