@@ -2,27 +2,31 @@
 
 # Media Organizer
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 
 ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)
 
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-![Tests](https://img.shields.io/badge/tests-396-success)
+![Tests](https://img.shields.io/badge/tests-428-success)
 
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
 
 A safe local media organizer for movies, TV series, and subtitles with planning, auditing, execution history, and undo support.
 
-**Current version:** 1.0.0
+**Current version:** 1.1.0
 
 Media Organizer works entirely locally with Plex libraries on Linux. It does not require network access, APIs, databases, or external services.
 
 ## Project status
 
-Version **1.0.0** is the first stable release of the core engine.
+Version **1.1.0** is the current stable release.
 
-The project has been validated through **396 automated tests** and controlled real-world library runs.
+The project has been validated through **428 automated tests** and controlled real-world library
+runs.
+
+It provides a safe local workflow for organizing Plex media libraries through planning, auditing,
+controlled execution, persistent history, and safe undo.
 
 Always keep an independent backup before organizing valuable or irreplaceable media collections.
 
@@ -224,7 +228,8 @@ Show/Season 01/01 Episode Title.mkv
 Show/Temporada 3/57 Episode Title.avi
 ```
 
-Absolute legacy numbering is only rebased when the sequence is complete and unambiguous.
+Absolute legacy numbering is only rebased when strong directory context makes the collection
+unambiguous.
 
 ### Subtitles
 
@@ -385,11 +390,10 @@ It executes:
 - Ruff format verification;
 - Pytest.
 
-The project currently has **396 automated tests**.
+The project currently has **428 automated tests**.
 
 Tests use temporary directories and do not depend on a real media library.
 
 ## License
 
 MIT License.
-
