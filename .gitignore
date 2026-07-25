@@ -10,3 +10,6 @@ __pycache__/
 build/
 dist/
 config.toml
+
+config-*.toml
+!config.example.toml

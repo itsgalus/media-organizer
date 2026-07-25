@@ -285,6 +285,147 @@ def test_apply_moves_legacy_episode_to_correct_season(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "label",
+    ["Ep.", "Episode", "Episódio", "Capítulo"],
+)
+def test_named_legacy_sequence_becomes_season_one(tmp_path: Path, label: str) -> None:
+    sources = [
+        touch(tmp_path, f"Legacy Miniseries/Show - {label} {number:02d} - Name.mp4")
+        for number in range(1, 4)
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert [operations[source].media_type for source in sources] == [MediaType.EPISODE] * 3
+    assert [operations[source].target.name for source in sources if operations[source].target] == [
+        "Show S01E01.mp4",
+        "Show S01E02.mp4",
+        "Show S01E03.mp4",
+    ]
+
+
+@pytest.mark.parametrize("label", ["Parte", "Part"])
+def test_ambiguous_part_requires_strong_context(tmp_path: Path, label: str) -> None:
+    sources = [
+        touch(tmp_path, f"Complete Miniseries/Show - {label} {number:02d}.mp4") for number in (1, 2)
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.EPISODE for source in sources)
+
+
+def test_corleone_legacy_miniseries_regression(tmp_path: Path) -> None:
+    names = [
+        "CORLEONE - Ep. 01 - Prima Puntata, 1943-1958 (576p - DVDRip).mp4",
+        "CORLEONE - Ep. 05 - Quinta Puntata, 1982-1987 (576p - DVDRip).mp4",
+        "CORLEONE - Ep. 06 - Sesta Puntata, 1988-1993 (576p - DVDRip).mp4",
+    ]
+    directory = (
+        "CORLEONE aka IL CAPO dei CAPI (2007) - Complete ITALIAN Miniseries - 576p DVDRip x264"
+    )
+    sources = [touch(tmp_path, f"{directory}/{name}") for name in names]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    for number, source in zip((1, 5, 6), sources, strict=True):
+        operation = operations[source]
+        assert operation.media_type is MediaType.EPISODE
+        assert operation.target == (
+            tmp_path / "series/CORLEONE/Season 01" / f"CORLEONE S01E{number:02d}.mp4"
+        )
+
+
+def test_isolated_named_legacy_candidate_remains_unknown(tmp_path: Path) -> None:
+    source = touch(tmp_path, "Show - Ep. 01 - Pilot.mp4")
+    config = make_config(tmp_path)
+    operation = build_plan(scan_files(config), config)[0]
+    assert operation.source == source
+    assert operation.media_type is MediaType.UNKNOWN
+
+
+def test_movie_containing_episode_word_remains_movie(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "The.Last.Episode.2020.mkv"),
+        touch(tmp_path, "Movie.Episode.2021.mkv"),
+        touch(tmp_path, "Episode.2020.mkv"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.MOVIE for source in sources)
+
+
+def test_ambiguous_named_legacy_files_remain_unknown(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "Mixed/First Show Ep. 01.mp4"),
+        touch(tmp_path, "Mixed/Second Show Ep. 02.mp4"),
+        touch(tmp_path, "Gapped/Show Ep. 01.mp4"),
+        touch(tmp_path, "Gapped/Show Ep. 03.mp4"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.UNKNOWN for source in sources)
+
+
+def test_generic_directory_is_not_strong_named_episode_context(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "Misc/Movie Ep. 01.mp4"),
+        touch(tmp_path, "Misc/Movie Ep. 02.mp4"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.UNKNOWN for source in sources)
+
+
+def test_directory_named_after_series_allows_incomplete_sequence(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "Show/Show Ep. 01.mp4"),
+        touch(tmp_path, "Show/Show Ep. 03.mp4"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert [operations[source].target.name for source in sources if operations[source].target] == [
+        "Show S01E01.mp4",
+        "Show S01E03.mp4",
+    ]
+
+
+def test_duplicate_numbers_fail_even_with_strong_context(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "Show/Show Ep. 01 First.mp4"),
+        touch(tmp_path, "Show/Show Episode 01 Second.mp4"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.UNKNOWN for source in sources)
+
+
+def test_mixed_series_prefixes_fail_even_with_series_context(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, "Complete Miniseries/First Show Ep. 01.mp4"),
+        touch(tmp_path, "Complete Miniseries/Second Show Ep. 02.mp4"),
+    ]
+    config = make_config(tmp_path)
+    operations = {
+        operation.source: operation for operation in build_plan(scan_files(config), config)
+    }
+    assert all(operations[source].media_type is MediaType.UNKNOWN for source in sources)
+
+
+@pytest.mark.parametrize(
     ("subtitle_name", "target_name"),
     [
         ("Subs/ger.srt", "Movie (2020).de.srt"),

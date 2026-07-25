@@ -16,7 +16,9 @@ from media_organizer.models import (
     Subtitle,
 )
 from media_organizer.parser import (
+    clean_title,
     legacy_episode_candidate,
+    legacy_named_episode_candidate,
     parse_episode,
     parse_episode_with_context,
     parse_movie,
@@ -92,6 +94,7 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
     video_sources: list[Path] = []
     subtitles: list[FoundFile] = []
     legacy_by_directory: dict[Path, list[tuple[FoundFile, int]]] = {}
+    named_legacy_by_directory: dict[Path, list[FoundFile]] = {}
     explicit_directories: set[Path] = set()
 
     for found in files:
@@ -108,6 +111,10 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
                     legacy_by_directory.setdefault(found.path.parent, []).append(
                         (found, candidate.absolute_number)
                     )
+                    continue
+                named_candidate = legacy_named_episode_candidate(found.path)
+                if named_candidate is not None:
+                    named_legacy_by_directory.setdefault(found.path.parent, []).append(found)
                     continue
             movie = None if episode else parse_movie(found.path)
             if episode:
@@ -145,6 +152,25 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
                 recognized.append(_RecognizedVideo(found.path, None, episode, target, operation))
             else:
                 operations.append(_operation(found.path, MediaType.UNKNOWN, None, config))
+
+    named_legacy_episodes = _named_legacy_episodes(named_legacy_by_directory)
+    for entries in named_legacy_by_directory.values():
+        for found in entries:
+            episode = named_legacy_episodes.get(found.path)
+            if episode is not None:
+                target = episode_target(config, episode)
+                operation = _operation(found.path, MediaType.EPISODE, target, config)
+                operations.append(operation)
+                recognized.append(_RecognizedVideo(found.path, None, episode, target, operation))
+            else:
+                movie = parse_movie(found.path)
+                if movie is not None:
+                    target = movie_target(config, movie)
+                    operation = _operation(found.path, MediaType.MOVIE, target, config)
+                    operations.append(operation)
+                    recognized.append(_RecognizedVideo(found.path, movie, None, target, operation))
+                else:
+                    operations.append(_operation(found.path, MediaType.UNKNOWN, None, config))
 
     _mark_conflicts(operations)
     for found in subtitles:
@@ -232,6 +258,52 @@ def _legacy_episode_numbers(
         for found, number in entries:
             episode_numbers[found.path] = number if first == 1 else number - first + 1
     return episode_numbers
+
+
+def _named_legacy_episodes(
+    candidates_by_directory: dict[Path, list[FoundFile]],
+) -> dict[Path, Episode]:
+    episodes: dict[Path, Episode] = {}
+    for directory, files in candidates_by_directory.items():
+        candidates = [(found, legacy_named_episode_candidate(found.path)) for found in files]
+        parsed = [(found, candidate) for found, candidate in candidates if candidate is not None]
+        if len(parsed) < 2:
+            continue
+        series_names = {candidate.series.casefold() for _, candidate in parsed}
+        numbers = [candidate.number for _, candidate in parsed]
+        if len(series_names) != 1 or len(set(numbers)) != len(numbers):
+            continue
+        series = parsed[0][1].series
+        if not _has_strong_series_context(directory, series):
+            continue
+        for found, candidate in parsed:
+            episodes[found.path] = Episode(
+                series=candidate.series,
+                season=1,
+                episodes=(candidate.number,),
+                extension=candidate.extension,
+            )
+    return episodes
+
+
+def _has_strong_series_context(directory: Path, series: str) -> bool:
+    directory_name = clean_title(directory.name).casefold()
+    series_name = clean_title(series).casefold()
+    context_words = (
+        "series",
+        "série",
+        "miniseries",
+        "minissérie",
+        "season",
+        "temporada",
+        "complete",
+        "completa",
+    )
+    return (
+        any(word in directory_name.split() for word in context_words)
+        or directory_name == series_name
+        or directory_name.startswith(f"{series_name} ")
+    )
 
 
 def _mark_conflicts(operations: list[PlannedOperation]) -> None:

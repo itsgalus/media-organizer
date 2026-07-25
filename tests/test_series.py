@@ -4,8 +4,10 @@ import pytest
 
 from media_organizer.parser import (
     legacy_episode_candidate,
+    legacy_named_episode_candidate,
     parse_episode,
     parse_episode_with_context,
+    parse_movie,
 )
 
 
@@ -34,6 +36,54 @@ def test_episode_preserves_extension() -> None:
     episode = parse_episode(Path("The.Office.US.S02E03.MP4"))
     assert episode is not None
     assert episode.extension == ".mp4"
+
+
+@pytest.mark.parametrize(
+    ("filename", "series", "number"),
+    [
+        ("CORLEONE - Ep. 01 - Prima Puntata.mp4", "CORLEONE", 1),
+        ("Show Ep.01 Name.mp4", "Show", 1),
+        ("Show EP01 Name.mp4", "Show", 1),
+        ("Show EP 01 Name.mp4", "Show", 1),
+        ("Show Episode 01 Name.mp4", "Show", 1),
+        ("Show Episode01 Name.mp4", "Show", 1),
+        ("Show Episodio 01 Name.mp4", "Show", 1),
+        ("Show Episódio 01 Name.mp4", "Show", 1),
+        ("Show Capitulo 01 Name.mp4", "Show", 1),
+        ("Show Capítulo 01 Name.mp4", "Show", 1),
+        ("Show Parte 01 Name.mp4", "Show", 1),
+        ("Show Part 01 Name.mp4", "Show", 1),
+    ],
+)
+def test_legacy_named_episode_candidate(filename: str, series: str, number: int) -> None:
+    candidate = legacy_named_episode_candidate(Path(filename))
+    assert candidate is not None
+    assert candidate.series == series
+    assert candidate.number == number
+
+
+@pytest.mark.parametrize(
+    ("filename", "title", "year"),
+    [
+        ("The.Last.Episode.2020.mkv", "The Last Episode", 2020),
+        ("Movie.Episode.2021.mkv", "Movie Episode", 2021),
+        ("Episode.2020.mkv", "Episode", 2020),
+    ],
+)
+def test_episode_word_followed_by_year_remains_available_to_movie_parser(
+    filename: str, title: str, year: int
+) -> None:
+    path = Path(filename)
+    assert legacy_named_episode_candidate(path) is None
+    movie = parse_movie(path)
+    assert movie is not None
+    assert movie.title == title
+    assert movie.year == year
+
+
+@pytest.mark.parametrize("filename", ["Show Ep. 00.mp4", "Show Episode 999.mp4"])
+def test_named_legacy_candidate_rejects_implausible_numbers(filename: str) -> None:
+    assert legacy_named_episode_candidate(Path(filename)) is None
 
 
 @pytest.mark.parametrize(

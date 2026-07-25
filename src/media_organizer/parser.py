@@ -14,6 +14,11 @@ YEAR_RE = re.compile(r"(?<!\d)(?P<year>19\d{2}|20\d{2})(?!\d)")
 NOISE_RE = re.compile(r"(?i)^(?:torrent|www|com|org|net|[a-f0-9]{8,}|rarbg|yts|eztv)$")
 SEASON_DIRECTORY_RE = re.compile(r"(?i)^(?:temporada|season)\s*0*(\d{1,2})$|^S(\d{2})$")
 LEGACY_EPISODE_RE = re.compile(r"^(?P<number>\d{1,3})(?:\s+|\s*[-.]\s+).+")
+LEGACY_NAMED_EPISODE_RE = re.compile(
+    r"(?i)(?<!\w)(?P<label>episode|epis[oó]dio|cap[ií]tulo|parte|part|ep)"
+    r"\s*\.?\s*0*(?P<number>\d{1,3})(?!\d)"
+)
+MAX_LEGACY_NAMED_EPISODE = 200
 
 TECHNICAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Resolution
@@ -72,6 +77,14 @@ class LegacyEpisodeCandidate:
     extension: str
 
 
+@dataclass(frozen=True, slots=True)
+class LegacyNamedEpisodeCandidate:
+    series: str
+    number: int
+    label: str
+    extension: str
+
+
 def clean_title(raw: str) -> str:
     words = re.sub(r"[._]+", " ", raw)
     words = re.sub(r"(?<!\w)-|-(?!\w)", " ", words)
@@ -96,6 +109,22 @@ def parse_episode(path: Path) -> Episode | None:
     if not series or season < 0 or any(number < 1 for number in episodes):
         return None
     return Episode(series=series, season=season, episodes=episodes, extension=path.suffix.lower())
+
+
+def legacy_named_episode_candidate(path: Path) -> LegacyNamedEpisodeCandidate | None:
+    match = LEGACY_NAMED_EPISODE_RE.search(path.stem)
+    if match is None:
+        return None
+    series = clean_title(path.stem[: match.start()])
+    number = int(match.group("number"))
+    if not series or not 1 <= number <= MAX_LEGACY_NAMED_EPISODE:
+        return None
+    return LegacyNamedEpisodeCandidate(
+        series=series,
+        number=number,
+        label=match.group("label").casefold(),
+        extension=path.suffix.lower(),
+    )
 
 
 def legacy_episode_candidate(
