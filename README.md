@@ -1,14 +1,66 @@
-# media-organizer
+# Media Organizer
 
-Organizador local de arquivos de mídia para bibliotecas Plex no Linux. A primeira
-versão reconhece filmes, episódios de séries e suas legendas, cria um plano
-auditável e só move arquivos depois de autorização explícita. Não usa rede, APIs,
-banco de dados ou serviços externos.
+Organizador local de filmes, séries e legendas com planejamento, auditoria,
+execução segura, histórico e undo.
+
+**Versão atual: 1.0.0**
+
+O Media Organizer trabalha localmente com bibliotecas Plex no Linux. Ele não usa
+rede, APIs, bancos de dados ou serviços externos.
+
+## Status do projeto
+
+A versão 1.0.0 é a primeira versão estável do núcleo funcional, validada por
+testes automatizados e por uma biblioteca real controlada. Faça backup antes de
+usar o programa em um acervo insubstituível.
+
+Consulte [CHANGELOG.md](CHANGELOG.md) para as mudanças da versão.
+
+## Recursos principais
+
+- `scan` somente leitura e `apply` com confirmação explícita;
+- organização de filmes, séries modernas e legadas e legendas;
+- associação contextual conservadora de legendas;
+- classificação de arquivos como `UNKNOWN` e detecção de conflitos;
+- diagnóstico com `doctor` e relatórios `audit` em texto ou TSV;
+- histórico persistente, `undo` seguro e lock de execução;
+- preview, progresso e resumos no terminal com Rich.
+
+## Início rápido
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+cp config.example.toml config.toml
+
+.venv/bin/python -m media_organizer --config config.toml doctor
+.venv/bin/python -m media_organizer --config config.toml scan
+.venv/bin/python -m media_organizer --config config.toml audit
+.venv/bin/python -m media_organizer --config config.toml apply
+.venv/bin/python -m media_organizer --config config.toml history
+.venv/bin/python -m media_organizer --config config.toml undo
+```
+
+Depois da instalação, o entry point `media-organizer` oferece os mesmos
+comandos.
+
+## Fluxo seguro recomendado
+
+1. Mantenha um backup independente.
+2. Verifique configuração e filesystem com `doctor`.
+3. Examine o plano somente leitura com `scan`.
+4. Gere uma evidência de revisão com `audit`.
+5. Revise todos os itens `UNKNOWN` e conflitos.
+6. Execute `apply` e confirme as operações.
+7. Consulte o registro com `history`.
+8. Use `undo` se precisar restaurar a execução.
+
+O histórico auxilia a recuperação operacional, mas não substitui backup.
 
 ## Requisitos e instalação
 
 - Python 3.12 ou superior
-- Linux (os exemplos funcionam no Linux Mint)
+- Linux (uso principal validado; os exemplos funcionam no Linux Mint)
 
 ```bash
 git clone <url-do-repositorio> media-organizer
@@ -269,29 +321,45 @@ inventado.
 - Destinos existentes e destinos duplicados são conflitos e nunca são
   sobrescritos.
 - O estado é revalidado imediatamente antes de cada movimento.
-- `rename` é usado no mesmo filesystem. Entre filesystems, a cópia usa criação
-  exclusiva, sincronização e só então remove a origem.
+- No mesmo filesystem, o destino é criado por hard link exclusivo antes da
+  remoção da origem. Entre filesystems, a cópia usa criação exclusiva,
+  sincronização e só então remove a origem.
 - Não há exclusão, substituição nem deduplicação destrutiva.
 - Uma falha é registrada e as operações independentes podem continuar.
 
 Mantenha backups: embora conservador, `apply` realiza movimentos reais.
 
-## Limitações
+## Limitações conhecidas
 
-Esta versão usa apenas heurísticas locais de nomes. Não consulta metadados,
-portanto não resolve títulos ambíguos, filmes sem ano, ordem absoluta de anime,
-extras, temporadas especiais ou categorias `anime`, `cartoons` e
-`documentaries`. Arquivos não reconhecidos ficam em `incoming` como `UNKNOWN`.
+- Não consulta serviços externos de metadata.
+- Não possui watch mode nem roda como daemon ou serviço.
+- Não associa legendas genéricas quando existem vários vídeos candidatos.
+- Heurísticas ambíguas permanecem `UNKNOWN`.
+- O undo não promete rollback global se uma falha operacional ocorrer depois de
+  restaurações parciais; o estado fica registrado para revisão.
+- O histórico não substitui backup.
+- O suporte principal foi validado em Linux.
+
+## Roadmap
+
+Itens planejados, ainda sem versão definida:
+
+- watch mode;
+- integração opcional com metadata;
+- execução como serviço;
+- assistente de configuração;
+- distribuição e empacotamento;
+- interface web em etapa posterior.
 
 ## Testes
 
 ```bash
-source .venv/bin/activate
-pytest
+make check
 ```
 
-Os testes usam diretórios temporários e não pressupõem a existência de
-`/mnt/media`.
+O projeto possui **396 testes automatizados**. `make check` executa lint,
+verificação de formatação e testes. A suíte usa diretórios temporários e não
+pressupõe a existência de `/mnt/media`.
 
 ## Desenvolvimento
 
