@@ -1,3 +1,4 @@
+
 # Media Organizer
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
@@ -43,6 +44,16 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release history.
 - Exclusive execution lock
 - Rich terminal previews, progress, and summaries
 - Safe same-filesystem and cross-filesystem moves
+
+## Preview
+
+Example dry-run organization preview before moving any files.
+
+### Scan preview
+
+![Scan preview (top)](docs/images/scan-preview-top.png)
+
+![Scan preview (summary)](docs/images/scan-preview-summary.png)
 
 ## Quick start
 
