@@ -72,6 +72,17 @@ def test_audit_empty_library(tmp_path: Path) -> None:
     assert report.exists()
 
 
+def test_audit_lists_contextually_associated_subtitle(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie Folder/Movie.2020.mkv")
+    create_file(tmp_path, "Movie Folder/Subs/ger.srt")
+    report = tmp_path / "contextual.txt"
+    assert run_audit(config_path, report) == 0
+    content = report.read_text(encoding="utf-8")
+    assert "Subtitles: 1" in content
+    assert "movies/Movie (2020)/Movie (2020).de.srt" in content
+
+
 def test_default_report_is_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path = make_library(tmp_path)
     monkeypatch.chdir(tmp_path)

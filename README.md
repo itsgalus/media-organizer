@@ -92,6 +92,14 @@ começando em 1 são mantidas. Numeração absoluta só é convertida quando tod
 vídeos numerados da temporada formam uma sequência contínua, sem duplicidades,
 com pelo menos dois arquivos; sequências ambíguas permanecem `UNKNOWN`.
 
+Legendas com nomes explícitos continuam tendo prioridade. Legendas genéricas em
+pastas `Subs`, `Subtitles`, `Legendas` e equivalentes podem ser associadas pelo
+contexto somente quando o contêiner de mídia possui exatamente um vídeo
+reconhecido. Idiomas presentes em subpastas e flags como `forced`, `sdh` e `cc`
+também são preservados; `german`, `ger`, `deu` e `de` são normalizados para
+`de`. Contêineres com zero ou vários vídeos permanecem `UNKNOWN`. Revise sempre
+o resultado com `scan` e `audit` antes de executar `apply`.
+
 Para aplicar apenas as operações sem conflito:
 
 ```bash

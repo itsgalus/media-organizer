@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from media_organizer.config import Config
@@ -20,7 +21,20 @@ from media_organizer.parser import (
     parse_episode_with_context,
     parse_movie,
 )
-from media_organizer.subtitles import compatible_subtitle, parse_subtitle
+from media_organizer.subtitles import (
+    SUBTITLE_DIRECTORY_NAMES,
+    compatible_subtitle,
+    parse_subtitle,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _RecognizedVideo:
+    source: Path
+    movie: Movie | None
+    episode: Episode | None
+    target: Path
+    operation: PlannedOperation
 
 
 class UnsafePathError(ValueError):
@@ -74,7 +88,8 @@ def _operation(
 
 def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperation]:
     operations: list[PlannedOperation] = []
-    recognized: list[tuple[Movie | None, Episode | None, Path]] = []
+    recognized: list[_RecognizedVideo] = []
+    video_sources: list[Path] = []
     subtitles: list[FoundFile] = []
     legacy_by_directory: dict[Path, list[tuple[FoundFile, int]]] = {}
     explicit_directories: set[Path] = set()
@@ -83,6 +98,7 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
         if found.extension in config.subtitle_extensions:
             subtitles.append(found)
         elif found.extension in config.video_extensions:
+            video_sources.append(found.path)
             episode = parse_episode(found.path)
             if episode is not None:
                 explicit_directories.add(found.path.parent)
@@ -96,12 +112,14 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
             movie = None if episode else parse_movie(found.path)
             if episode:
                 target = episode_target(config, episode)
-                operations.append(_operation(found.path, MediaType.EPISODE, target, config))
-                recognized.append((None, episode, target))
+                operation = _operation(found.path, MediaType.EPISODE, target, config)
+                operations.append(operation)
+                recognized.append(_RecognizedVideo(found.path, None, episode, target, operation))
             elif movie:
                 target = movie_target(config, movie)
-                operations.append(_operation(found.path, MediaType.MOVIE, target, config))
-                recognized.append((movie, None, target))
+                operation = _operation(found.path, MediaType.MOVIE, target, config)
+                operations.append(operation)
+                recognized.append(_RecognizedVideo(found.path, movie, None, target, operation))
             else:
                 operations.append(_operation(found.path, MediaType.UNKNOWN, None, config))
         else:
@@ -122,24 +140,77 @@ def build_plan(files: Iterable[FoundFile], config: Config) -> list[PlannedOperat
             )
             if episode is not None:
                 target = episode_target(config, episode)
-                operations.append(_operation(found.path, MediaType.EPISODE, target, config))
-                recognized.append((None, episode, target))
+                operation = _operation(found.path, MediaType.EPISODE, target, config)
+                operations.append(operation)
+                recognized.append(_RecognizedVideo(found.path, None, episode, target, operation))
             else:
                 operations.append(_operation(found.path, MediaType.UNKNOWN, None, config))
 
+    _mark_conflicts(operations)
     for found in subtitles:
         subtitle = parse_subtitle(found.path)
         target = None
         if subtitle:
-            for movie, episode, video_target in recognized:
-                if compatible_subtitle(subtitle, movie, episode):
-                    target = _subtitle_target(video_target, subtitle)
+            for video in recognized:
+                if compatible_subtitle(subtitle, video.movie, video.episode):
+                    target = _subtitle_target(video.target, subtitle)
                     break
+            if target is None and subtitle.movie is None and subtitle.episode is None:
+                video = _contextual_video(
+                    found.path,
+                    config.incoming_path,
+                    video_sources,
+                    recognized,
+                )
+                if video is not None:
+                    target = _subtitle_target(video.target, subtitle)
         media_type = MediaType.SUBTITLE if target else MediaType.UNKNOWN
         operations.append(_operation(found.path, media_type, target, config))
 
     _mark_conflicts(operations)
     return sorted(operations, key=lambda operation: str(operation.source))
+
+
+def _contextual_video(
+    subtitle_path: Path,
+    incoming_path: Path,
+    video_sources: list[Path],
+    recognized: list[_RecognizedVideo],
+) -> _RecognizedVideo | None:
+    try:
+        relative = subtitle_path.resolve(strict=False).relative_to(
+            incoming_path.resolve(strict=False)
+        )
+    except ValueError:
+        return None
+
+    subtitle_indexes = [
+        index
+        for index, part in enumerate(relative.parts[:-1])
+        if part.casefold() in SUBTITLE_DIRECTORY_NAMES
+    ]
+    if not subtitle_indexes:
+        return None
+
+    subtitle_directory_index = subtitle_indexes[-1]
+    container = incoming_path.joinpath(*relative.parts[:subtitle_directory_index])
+    incoming_resolved = incoming_path.resolve(strict=False)
+    while container.resolve(strict=False) != incoming_resolved:
+        container_resolved = container.resolve(strict=False)
+        candidates = [
+            source
+            for source in video_sources
+            if source.resolve(strict=False).is_relative_to(container_resolved)
+        ]
+        if candidates:
+            if len(candidates) != 1:
+                return None
+            matching = [video for video in recognized if video.source == candidates[0]]
+            if len(matching) != 1 or matching[0].operation.status is not OperationStatus.PLANNED:
+                return None
+            return matching[0]
+        container = container.parent
+    return None
 
 
 def _legacy_episode_numbers(

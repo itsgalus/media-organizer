@@ -282,3 +282,156 @@ def test_apply_moves_legacy_episode_to_correct_season(tmp_path: Path) -> None:
     assert result.moved == 1
     assert not source.exists()
     assert destination.read_bytes() == b"episode"
+
+
+@pytest.mark.parametrize(
+    ("subtitle_name", "target_name"),
+    [
+        ("Subs/ger.srt", "Movie (2020).de.srt"),
+        ("Subtitles/eng.srt", "Movie (2020).en.srt"),
+        ("Subs/German/forced.srt", "Movie (2020).de.forced.srt"),
+        ("Subtitles/German/Forced/subtitle.sdh.srt", "Movie (2020).de.forced.sdh.srt"),
+    ],
+)
+def test_generic_subtitle_is_associated_with_single_movie(
+    tmp_path: Path, subtitle_name: str, target_name: str
+) -> None:
+    touch(tmp_path, "Movie Folder/Movie.2020.mkv")
+    subtitle = touch(tmp_path, f"Movie Folder/{subtitle_name}")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    operation = next(item for item in plan if item.source == subtitle)
+    assert operation.media_type is MediaType.SUBTITLE
+    assert operation.target == tmp_path / "movies/Movie (2020)" / target_name
+
+
+@pytest.mark.parametrize(
+    ("subtitle_name", "target_name"),
+    [
+        ("Subs/pt-BR.srt", "Show S01E01.pt-BR.srt"),
+        ("Subs/German/forced.srt", "Show S01E01.de.forced.srt"),
+    ],
+)
+def test_generic_subtitle_is_associated_with_single_episode(
+    tmp_path: Path, subtitle_name: str, target_name: str
+) -> None:
+    touch(tmp_path, "Show Folder/Show.S01E01.mkv")
+    subtitle = touch(tmp_path, f"Show Folder/{subtitle_name}")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    operation = next(item for item in plan if item.source == subtitle)
+    assert operation.media_type is MediaType.SUBTITLE
+    assert operation.target == tmp_path / "series/Show/Season 01" / target_name
+
+
+def test_nested_subtitle_directory_can_find_media_container(tmp_path: Path) -> None:
+    touch(tmp_path, "Movie Folder/Movie.2020.mkv")
+    subtitle = touch(tmp_path, "Movie Folder/Extras/Subs/German/subtitle.srt")
+    config = make_config(tmp_path)
+    operation = next(
+        item for item in build_plan(scan_files(config), config) if item.source == subtitle
+    )
+    assert operation.target == tmp_path / "movies/Movie (2020)/Movie (2020).de.srt"
+
+
+@pytest.mark.parametrize(
+    "video_names",
+    [
+        (),
+        ("Movie.One.2020.mkv", "Movie.Two.2021.mkv"),
+        ("Show.S01E01.mkv", "Show.S01E02.mkv"),
+        ("Movie.2020.mkv", "Show.S01E01.mkv"),
+        ("video-final.mkv",),
+    ],
+)
+def test_ambiguous_context_keeps_generic_subtitle_unknown(
+    tmp_path: Path, video_names: tuple[str, ...]
+) -> None:
+    for name in video_names:
+        touch(tmp_path, f"Container/{name}")
+    subtitle = touch(tmp_path, "Container/Subs/ger.srt")
+    config = make_config(tmp_path)
+    operation = next(
+        item for item in build_plan(scan_files(config), config) if item.source == subtitle
+    )
+    assert operation.media_type is MediaType.UNKNOWN
+    assert operation.target is None
+
+
+def test_explicit_subtitle_keeps_priority_over_context(tmp_path: Path) -> None:
+    touch(tmp_path, "Container/Show.S01E01.mkv")
+    subtitle = touch(tmp_path, "Container/Subs/Show.S01E01.en.srt")
+    config = make_config(tmp_path)
+    operation = next(
+        item for item in build_plan(scan_files(config), config) if item.source == subtitle
+    )
+    assert operation.target == tmp_path / "series/Show/Season 01/Show S01E01.en.srt"
+
+
+def test_incompatible_explicit_subtitle_does_not_fall_back_to_context(tmp_path: Path) -> None:
+    touch(tmp_path, "Container/Movie.2020.mkv")
+    subtitle = touch(tmp_path, "Container/Subs/Other.Movie.2021.en.srt")
+    config = make_config(tmp_path)
+    operation = next(
+        item for item in build_plan(scan_files(config), config) if item.source == subtitle
+    )
+    assert operation.media_type is MediaType.UNKNOWN
+
+
+def test_context_does_not_cross_to_sibling_directory(tmp_path: Path) -> None:
+    touch(tmp_path, "Movie A/Movie.2020.mkv")
+    subtitle = touch(tmp_path, "Movie B/Subs/ger.srt")
+    config = make_config(tmp_path)
+    operation = next(
+        item for item in build_plan(scan_files(config), config) if item.source == subtitle
+    )
+    assert operation.media_type is MediaType.UNKNOWN
+
+
+def test_context_does_not_cross_incoming_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside" / "Movie Folder" / "Subs" / "ger.srt"
+    found = FoundFile(outside, ".srt")
+    config = make_config(tmp_path)
+    operation = build_plan([found], config)[0]
+    assert operation.media_type is MediaType.UNKNOWN
+
+
+def test_contextual_subtitles_with_same_target_are_conflicts(tmp_path: Path) -> None:
+    touch(tmp_path, "Movie Folder/Movie.2020.mkv")
+    first = touch(tmp_path, "Movie Folder/Subs/ger.srt")
+    second = touch(tmp_path, "Movie Folder/Subtitles/German.srt")
+    config = make_config(tmp_path)
+    operations = [
+        item for item in build_plan(scan_files(config), config) if item.source in {first, second}
+    ]
+    assert len({item.target for item in operations}) == 1
+    assert all(item.status is OperationStatus.CONFLICT for item in operations)
+    assert all(
+        item.conflict is not None and "mesmo destino" in item.conflict.reason for item in operations
+    )
+
+
+def test_contextual_subtitle_plan_is_deterministic(tmp_path: Path) -> None:
+    touch(tmp_path, "Movie Folder/Movie.2020.mkv")
+    touch(tmp_path, "Movie Folder/Subs/en.sdh.srt")
+    touch(tmp_path, "Movie Folder/Subs/ger.srt")
+    config = make_config(tmp_path)
+    first = build_plan(scan_files(config), config)
+    second = build_plan(scan_files(config), config)
+    assert [(item.source, item.target, item.status) for item in first] == [
+        (item.source, item.target, item.status) for item in second
+    ]
+
+
+def test_contextual_subtitle_scan_is_read_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    video = touch(tmp_path, "Movie Folder/Movie.2020.mkv", b"video")
+    subtitle = touch(tmp_path, "Movie Folder/Subs/ger.srt", b"subtitle")
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'media_root = "{tmp_path}"\n', encoding="utf-8")
+    assert main(["--config", str(config_path), "scan"]) == 0
+    assert video.read_bytes() == b"video"
+    assert subtitle.read_bytes() == b"subtitle"
+    assert not (tmp_path / "movies").exists()
+    assert "Subtitle: de" in capsys.readouterr().out
