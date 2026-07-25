@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import sys
@@ -441,3 +442,224 @@ def test_apply_speed_uses_processed_operations(
     assert "Processed: 1" in output
     assert "Speed: 0.5 files/s" in output
     assert "Speed: 0.0 files/s" not in output
+
+
+def test_apply_with_moved_file_creates_history_json(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv", b"history-content")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    records = list((tmp_path / ".media-organizer/history").glob("*.json"))
+    assert len(records) == 1
+    payload = json.loads(records[0].read_text(encoding="utf-8"))
+    assert payload["version"] == 1
+    assert payload["moved"] == 1
+    assert payload["operations"][0]["source"] == "incoming/Movie.2020.mkv"
+
+
+def test_apply_without_moved_file_does_not_create_history(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "unknown.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    assert not (tmp_path / ".media-organizer/history").exists()
+
+
+def test_cancelled_apply_does_not_create_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    assert run_cli(config_path, "apply") == 0
+    assert not (tmp_path / ".media-organizer/history").exists()
+
+
+def test_history_write_failure_after_move_returns_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    monkeypatch.setattr(
+        cli,
+        "write_history",
+        lambda *args, **kwargs: (_ for _ in ()).throw(cli.HistoryWriteError("disk full")),
+    )
+    assert run_cli(config_path, "apply", "--yes") == 1
+    assert (tmp_path / "movies/Movie (2020)/Movie (2020).mkv").exists()
+    assert "arquivos foram movidos" in capsys.readouterr().err
+
+
+def test_history_empty_and_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config_path = make_library(tmp_path)
+    assert run_cli(config_path, "history") == 0
+    assert "Nenhuma execução registrada" in capsys.readouterr().out
+    for year in (2020, 2021):
+        create_file(tmp_path, f"Movie.{year}.mkv")
+        assert run_cli(config_path, "apply", "--yes") == 0
+    assert run_cli(config_path, "history", "--limit", "1") == 0
+    output = capsys.readouterr().out
+    assert output.count("not_undone") == 1
+
+
+def test_invalid_history_limit_exits_with_two() -> None:
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["history", "--limit", "0"])
+    assert raised.value.code == 2
+
+
+def test_history_quiet_is_compact_and_literal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    capsys.readouterr()
+    assert cli.main(["--config", str(config_path), "--quiet", "history"]) == 0
+    output = capsys.readouterr().out
+    assert "not_undone" in output
+    assert "History" not in output
+
+
+def test_undo_without_history_returns_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = make_library(tmp_path)
+    assert run_cli(config_path, "undo", "--yes") == 0
+    assert "Nenhuma execução elegível" in capsys.readouterr().out
+
+
+def test_undo_preview_and_cancel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = make_library(tmp_path)
+    source = create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    assert run_cli(config_path, "undo") == 0
+    output = capsys.readouterr().out
+    assert "Undo Preview" in output
+    assert "movies/Movie (2020)/Movie (2020).mkv" in output
+    assert "incoming/Movie.2020.mkv" in output
+    assert not source.exists()
+
+
+def test_undo_yes_restores_file_and_persists_status(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    source = create_file(tmp_path, "Movie.2020.mkv", b"undo-content")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    target = tmp_path / "movies/Movie (2020)/Movie (2020).mkv"
+    record_path = next((tmp_path / ".media-organizer/history").glob("*.json"))
+    assert run_cli(config_path, "undo", "--yes") == 0
+    assert source.read_bytes() == b"undo-content"
+    assert not target.exists()
+    payload = json.loads(record_path.read_text(encoding="utf-8"))
+    assert payload["undo_status"] == "undone"
+    assert payload["undone_count"] == 1
+
+
+def test_undo_by_id_and_missing_id(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    record_path = next((tmp_path / ".media-organizer/history").glob("*.json"))
+    assert run_cli(config_path, "undo", "--id", record_path.stem, "--yes") == 0
+    assert run_cli(config_path, "undo", "--id", "2026-07-24T000000.000000Z", "--yes") == 2
+
+
+def test_corrupt_history_returns_two_for_undo(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = make_library(tmp_path)
+    directory = tmp_path / ".media-organizer/history"
+    directory.mkdir(parents=True)
+    (directory / "2026-07-24T000000.000000Z.json").write_text("{broken", encoding="utf-8")
+    assert run_cli(config_path, "undo", "--yes") == 2
+    assert "Erro de histórico" in capsys.readouterr().err
+
+
+def test_lock_blocks_apply_and_is_preserved(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    source = create_file(tmp_path, "Movie.2020.mkv")
+    lock = tmp_path / ".media-organizer/lock"
+    lock.parent.mkdir()
+    lock.write_text("other\n", encoding="utf-8")
+    assert run_cli(config_path, "apply", "--yes") == 1
+    assert source.exists()
+    assert lock.exists()
+
+
+def test_lock_blocks_undo(tmp_path: Path) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    lock = tmp_path / ".media-organizer/lock"
+    lock.write_text("other\n", encoding="utf-8")
+    assert run_cli(config_path, "undo", "--yes") == 1
+
+
+def test_undo_revalidates_filesystem_inside_lock_after_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = make_library(tmp_path)
+    source = create_file(tmp_path, "Movie.2020.mkv", b"original")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    target = tmp_path / "movies/Movie (2020)/Movie (2020).mkv"
+
+    def change_filesystem_before_lock(prompt: str) -> str:
+        source.write_bytes(b"racing-file")
+        return "y"
+
+    monkeypatch.setattr("builtins.input", change_filesystem_before_lock)
+    assert run_cli(config_path, "undo") == 1
+    assert source.read_bytes() == b"racing-file"
+    assert target.read_bytes() == b"original"
+    assert not (tmp_path / ".media-organizer/lock").exists()
+    assert "Undo blocked" in capsys.readouterr().err
+
+
+def test_undo_validates_before_confirmation_and_again_inside_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "apply", "--yes") == 0
+    lock_path = tmp_path / ".media-organizer/lock"
+    validation_lock_states: list[bool] = []
+    events: list[str] = []
+    original_validate = cli.validate_undo
+    original_execute = cli.execute_undo
+
+    def tracked_validate(record: object, config: object) -> tuple[str, ...]:
+        validation_lock_states.append(lock_path.exists())
+        events.append("validate")
+        return original_validate(record, config)
+
+    def tracked_execute(record: object, config: object) -> object:
+        assert lock_path.exists()
+        events.append("execute")
+        return original_execute(record, config)
+
+    monkeypatch.setattr(cli, "validate_undo", tracked_validate)
+    monkeypatch.setattr(cli, "execute_undo", tracked_execute)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    assert run_cli(config_path, "undo") == 0
+    assert validation_lock_states == [False, True]
+    assert events == ["validate", "validate", "execute"]
+    assert not lock_path.exists()
+
+
+def test_undo_keyboard_interrupt_returns_130(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = make_library(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "select_history",
+        lambda *args: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+    assert run_cli(config_path, "undo", "--yes") == 130

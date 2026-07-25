@@ -10,6 +10,12 @@ from rich.tree import Tree
 
 import media_organizer.presentation as presentation
 from media_organizer.config import Config
+from media_organizer.history import (
+    HistoryEntry,
+    HistoryOperation,
+    HistoryRecord,
+    UndoResult,
+)
 from media_organizer.models import (
     Conflict,
     Episode,
@@ -24,8 +30,12 @@ from media_organizer.presentation import (
     indeterminate_progress,
     render_doctor,
     render_error,
+    render_history,
     render_operations,
     render_summary,
+    render_undo_blockers,
+    render_undo_preview,
+    render_undo_summary,
 )
 
 
@@ -452,3 +462,43 @@ def test_conflict_and_error_markup_are_rendered_literally(tmp_path: Path) -> Non
 
     output = stream.getvalue()
     assert output.count(markers) == 3
+
+
+def test_history_and_undo_render_external_markup_literally(tmp_path: Path) -> None:
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, width=160)
+    operation = HistoryOperation(
+        "incoming/Movie.[red]Cut[/red].2020.mkv",
+        "movies/Movie [bold](2020)[/bold]/Movie.mkv",
+        "MOVIE",
+        "MOVED",
+        5,
+        1,
+    )
+    record = HistoryRecord(
+        1,
+        "2026-07-24T201530.123456Z",
+        "2026-07-24T20:15:30.123456Z",
+        str(tmp_path),
+        "apply",
+        1,
+        0,
+        (operation,),
+    )
+    render_history(
+        [HistoryEntry(tmp_path / "[not-a-style].json", None, "erro [red]literal[/red]")],
+        console=console,
+        compact=False,
+    )
+    render_undo_preview(record, console=console)
+    render_undo_blockers(("bloqueio [bold]literal[/bold]",), console=console)
+    render_undo_summary(UndoResult(record, 0, ("erro",)), console=console, compact=True)
+    output = stream.getvalue()
+    for literal in (
+        "[not-a-style]",
+        "[red]literal[/red]",
+        "Movie.[red]Cut[/red].2020.mkv",
+        "Movie [bold](2020)[/bold]",
+        "[bold]literal[/bold]",
+    ):
+        assert literal in output

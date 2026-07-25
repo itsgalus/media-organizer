@@ -12,6 +12,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from media_organizer.config import Config
+from media_organizer.history import HistoryEntry, HistoryRecord, UndoResult
 from media_organizer.models import MediaType, OperationStatus, PlannedOperation
 from media_organizer.parser import parse_episode
 from media_organizer.subtitles import parse_subtitle
@@ -306,6 +307,87 @@ def render_message(message: str, *, console: Console, style: str | None = None) 
 
 def render_error(message: str, *, console: Console) -> None:
     console.print(Text(message, style="bold red"))
+
+
+def render_history(
+    entries: list[HistoryEntry],
+    *,
+    console: Console,
+    compact: bool,
+) -> None:
+    if not entries:
+        render_message("Nenhuma execução registrada.", console=console, style="yellow")
+        return
+    if compact:
+        for entry in entries:
+            if entry.record is None:
+                line = Text("INVALID\t")
+                line.append(entry.path.name)
+                line.append("\t")
+                line.append(entry.error or "histórico inválido")
+            else:
+                record = entry.record
+                line = Text(record.id)
+                line.append(f"\t{record.moved}\t{record.failed}\t{record.undo_status}")
+            console.print(line)
+        return
+
+    table = Table(title="History")
+    table.add_column("Timestamp")
+    table.add_column("ID")
+    table.add_column("Moved", justify="right")
+    table.add_column("Failed", justify="right")
+    table.add_column("Undo status")
+    table.add_column("Detail", overflow="fold")
+    for entry in entries:
+        if entry.record is None:
+            table.add_row(
+                Text("INVALID", style="red"),
+                Text(entry.path.stem),
+                Text(""),
+                Text(""),
+                Text("invalid", style="red"),
+                Text(entry.error or "histórico inválido"),
+            )
+            continue
+        record = entry.record
+        table.add_row(
+            Text(record.timestamp),
+            Text(record.id),
+            Text(str(record.moved)),
+            Text(str(record.failed)),
+            Text(record.undo_status),
+            Text(record.undo_error or ""),
+        )
+    console.print(table)
+
+
+def render_undo_preview(record: HistoryRecord, *, console: Console) -> None:
+    tree = Tree(Text("Undo Preview", style="bold cyan"))
+    for operation in reversed(record.operations):
+        node = tree.add(Text(operation.target))
+        target = Text("-> ")
+        target.append(operation.source)
+        node.add(target)
+    console.print(tree)
+
+
+def render_undo_blockers(blockers: tuple[str, ...], *, console: Console) -> None:
+    tree = Tree(Text("Undo blocked", style="bold red"))
+    for blocker in blockers:
+        tree.add(Text(blocker))
+    console.print(tree)
+
+
+def render_undo_summary(result: UndoResult, *, console: Console, compact: bool) -> None:
+    values = {
+        "Execution ID": result.record.id,
+        "Status": result.record.undo_status,
+        "Reverted": result.reverted,
+        "Total": len(result.record.operations),
+        "Errors": len(result.errors),
+    }
+    _render_values("Undo Summary:", values, console=console, compact=compact)
 
 
 def indeterminate_progress(description: str, *, console: Console) -> Progress:

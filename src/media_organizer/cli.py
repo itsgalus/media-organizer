@@ -16,6 +16,18 @@ from media_organizer.audit import (
     write_audit_report,
 )
 from media_organizer.config import Config, ConfigurationError, load_config
+from media_organizer.history import (
+    HistoryLock,
+    HistoryLockError,
+    HistoryValidationError,
+    HistoryWriteError,
+    create_history_record,
+    execute_undo,
+    list_history,
+    select_history,
+    validate_undo,
+    write_history,
+)
 from media_organizer.models import FoundFile, OperationStatus, PlannedOperation
 from media_organizer.organizer import apply_plan
 from media_organizer.planner import build_plan, ensure_within
@@ -27,10 +39,14 @@ from media_organizer.presentation import (
     render_confirmation,
     render_doctor,
     render_error,
+    render_history,
     render_message,
     render_mode_banner,
     render_operations,
     render_summary,
+    render_undo_blockers,
+    render_undo_preview,
+    render_undo_summary,
 )
 from media_organizer.scanner import scan_files
 
@@ -40,7 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="media-organizer",
         description=(
             "Organiza mídia local com segurança: scan apenas planeja, apply move arquivos, "
-            "audit gera um relatório e doctor diagnostica configuração e filesystem."
+            "audit gera relatório, history lista execuções, undo desfaz com validação e "
+            "doctor diagnostica configuração e filesystem."
         ),
     )
     parser.add_argument(
@@ -97,7 +114,41 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="formato do relatório (padrão: text)",
     )
+    history_parser = commands.add_parser(
+        "history",
+        help="lista execuções de apply registradas",
+        description=(
+            "Lista o histórico persistente de execuções, da mais recente para a mais antiga."
+        ),
+    )
+    history_parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=10,
+        help="quantidade máxima de registros (padrão: 10)",
+    )
+    undo_parser = commands.add_parser(
+        "undo",
+        help="desfaz com segurança uma execução registrada",
+        description="Valida e desfaz a última execução elegível sem sobrescrever arquivos.",
+    )
+    undo_parser.add_argument("--id", dest="execution_id", help="ID específico da execução")
+    undo_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="executa sem pedir confirmação interativa",
+    )
     return parser
+
+
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("deve ser um inteiro positivo") from exc
+    if number < 1:
+        raise argparse.ArgumentTypeError("deve ser um inteiro positivo")
+    return number
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -241,6 +292,56 @@ def _run_audit(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _run_history(args: argparse.Namespace, config: Config) -> int:
+    entries = list_history(config)[: args.limit]
+    render_history(entries, console=create_console(), compact=args.quiet)
+    return 0
+
+
+def _confirm_undo() -> bool:
+    try:
+        answer = input("Desfazer esta execução? [y/N] ")
+    except EOFError:
+        answer = ""
+    return answer.strip().casefold() in {"y", "yes", "s", "sim"}
+
+
+def _run_undo(args: argparse.Namespace, config: Config) -> int:
+    console = create_console()
+    record = select_history(config, args.execution_id)
+    if record is None:
+        render_message(
+            "Nenhuma execução elegível para desfazer.",
+            console=console,
+            style="yellow",
+        )
+        return 0
+    if not args.quiet:
+        render_undo_preview(record, console=console)
+    blockers = validate_undo(record, config)
+    if blockers:
+        render_undo_blockers(blockers, console=create_console(stderr=True))
+        return 1
+    if not args.yes and not _confirm_undo():
+        if not args.quiet:
+            render_message("Operação cancelada.", console=console, style="yellow")
+        return 0
+
+    with HistoryLock(config):
+        current = select_history(config, record.id)
+        if current is None:
+            raise HistoryValidationError(f"execução não encontrada: {record.id}")
+        locked_blockers = validate_undo(current, config)
+        if locked_blockers:
+            render_undo_blockers(locked_blockers, console=create_console(stderr=True))
+            return 1
+        result = execute_undo(current, config)
+    if result.errors:
+        render_undo_blockers(result.errors, console=create_console(stderr=True))
+    render_undo_summary(result, console=console, compact=args.quiet)
+    return 0 if result.succeeded else 1
+
+
 def _run(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
@@ -249,6 +350,10 @@ def _run(argv: list[str] | None = None) -> int:
         return _doctor(config, quiet=args.quiet)
     if args.command == "audit":
         return _run_audit(args, config)
+    if args.command == "history":
+        return _run_history(args, config)
+    if args.command == "undo":
+        return _run_undo(args, config)
 
     console = create_console()
     if not args.quiet:
@@ -297,16 +402,36 @@ def _run(argv: list[str] | None = None) -> int:
         return 0
 
     apply_started = time.perf_counter()
-    if args.quiet or not console.is_terminal:
-        result = apply_plan(operations, config)
-    else:
-        with determined_progress(console=console) as progress:
-            task = progress.add_task("Moving files", total=runnable)
-            result = apply_plan(
-                operations,
-                config,
-                progress_callback=lambda _operation: progress.advance(task),
-            )
+    history_error: HistoryWriteError | None = None
+    with HistoryLock(config):
+        try:
+            if args.quiet or not console.is_terminal:
+                result = apply_plan(operations, config)
+            else:
+                with determined_progress(console=console) as progress:
+                    task = progress.add_task("Moving files", total=runnable)
+                    result = apply_plan(
+                        operations,
+                        config,
+                        progress_callback=lambda _operation: progress.advance(task),
+                    )
+        except KeyboardInterrupt:
+            interrupted_record = create_history_record(operations, config)
+            if interrupted_record is not None:
+                try:
+                    write_history(interrupted_record, config)
+                except HistoryWriteError as exc:
+                    render_error(
+                        f"A operação foi interrompida e o histórico falhou: {exc}",
+                        console=create_console(stderr=True),
+                    )
+            raise
+        record = create_history_record(result.operations, config)
+        if record is not None:
+            try:
+                write_history(record, config)
+            except HistoryWriteError as exc:
+                history_error = exc
     apply_elapsed = time.perf_counter() - apply_started
     if not args.quiet:
         render_operations(result.operations, config, console=console)
@@ -318,7 +443,12 @@ def _run(argv: list[str] | None = None) -> int:
         elapsed=apply_elapsed,
         compact=args.quiet,
     )
-    return 1 if result.failed else 0
+    if history_error is not None:
+        render_error(
+            f"Os arquivos foram movidos, mas o histórico falhou: {history_error}",
+            console=create_console(stderr=True),
+        )
+    return 1 if result.failed or history_error is not None else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -331,6 +461,12 @@ def main(argv: list[str] | None = None) -> int:
     except AuditReportError as exc:
         render_error(f"Erro de relatório: {exc}", console=error_console)
         return 2
+    except HistoryValidationError as exc:
+        render_error(f"Erro de histórico: {exc}", console=error_console)
+        return 2
+    except (HistoryLockError, HistoryWriteError) as exc:
+        render_error(f"Falha operacional de histórico: {exc}", console=error_console)
+        return 1
     except KeyboardInterrupt:
         render_error("Operação interrompida pelo usuário.", console=error_console)
         return 130

@@ -210,6 +210,33 @@ media-organizer --config /tmp/media-organizer-real-test/config.toml audit --outp
 cat /tmp/media-organizer-real-test-audit.txt
 ```
 
+## Histórico e undo
+
+Cada `apply` que mover pelo menos um arquivo grava um JSON UTF-8 em
+`media_root/.media-organizer/history`. O registro contém somente operações
+realmente movidas, com caminhos relativos, tipo de mídia, tamanho e timestamp
+quando disponíveis.
+
+```bash
+media-organizer --config config.toml apply
+media-organizer --config config.toml history
+media-organizer --config config.toml history --limit 5
+media-organizer --config config.toml undo
+media-organizer --config config.toml undo --id EXECUTION_ID
+media-organizer --config config.toml undo --yes
+```
+
+O `undo` mostra um preview e valida todas as operações antes de mover qualquer
+arquivo: o destino atual precisa existir, a origem original deve estar livre e
+todos os caminhos devem permanecer dentro da biblioteca, sem links simbólicos
+intermediários. Nada é sobrescrito. Uma falha depois de parte do undo é
+registrada como `partially_undone` e exige revisão manual. Execuções completas
+usam `undone`; falhas antes da primeira restauração usam `undo_failed`.
+
+Um lock exclusivo em `.media-organizer/lock` impede `apply` e `undo`
+simultâneos. O histórico facilita recuperação operacional, mas não substitui
+backup. Use `scan` e `audit` antes do primeiro `apply` real.
+
 ## Nomenclatura
 
 Filmes são organizados como:

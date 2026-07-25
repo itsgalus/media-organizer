@@ -50,24 +50,49 @@ def move_file(source: Path, target: Path, config: Config, *, apply: bool = True)
         LOGGER.info("Skipping: dry-run source=%s target=%s", source, target)
         return
 
-    root = config.media_root.resolve(strict=True)
-    incoming = config.incoming_path.resolve(strict=True)
-    if source.is_symlink():
-        raise UnsafePathError(f"origem é um link simbólico: {source}")
-    if not source.exists():
-        raise FileNotFoundError(f"origem não existe: {source}")
+    _move_between_roots(
+        source,
+        target,
+        source_root=config.incoming_path,
+        destination_root=config.media_root,
+    )
 
-    source_resolved = source.resolve(strict=True)
-    target_resolved = ensure_within(target, root)
-    ensure_within(source_resolved, incoming)
-    if not source_resolved.is_file():
-        raise UnsafePathError(f"origem não é um arquivo regular: {source}")
-    if target.exists():
-        raise FileExistsError(f"destino já existe: {target}")
 
-    _validate_destination_components(root, target.parent)
+def restore_file(source: Path, target: Path, config: Config) -> None:
+    _move_between_roots(
+        source,
+        target,
+        source_root=config.media_root,
+        destination_root=config.incoming_path,
+    )
+
+
+def validate_restore(source: Path, target: Path, config: Config) -> None:
+    _validate_move(
+        source,
+        target,
+        source_root=config.media_root,
+        destination_root=config.incoming_path,
+    )
+
+
+def _move_between_roots(
+    source: Path,
+    target: Path,
+    *,
+    source_root: Path,
+    destination_root: Path,
+) -> None:
+    source_resolved, target_resolved = _validate_move(
+        source,
+        target,
+        source_root=source_root,
+        destination_root=destination_root,
+    )
+    destination_root_resolved = destination_root.resolve(strict=True)
+    _validate_destination_components(destination_root_resolved, target.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
-    _validate_destination_components(root, target.parent)
+    _validate_destination_components(destination_root_resolved, target.parent)
     if not source_resolved.exists():
         raise FileNotFoundError(f"origem desapareceu antes da movimentação: {source}")
 
@@ -87,6 +112,45 @@ def move_file(source: Path, target: Path, config: Config, *, apply: bool = True)
     except Exception:
         _remove_partial_target(target_resolved)
         raise
+
+
+def _validate_move(
+    source: Path,
+    target: Path,
+    *,
+    source_root: Path,
+    destination_root: Path,
+) -> tuple[Path, Path]:
+    source_root_resolved = source_root.resolve(strict=True)
+    destination_root_resolved = destination_root.resolve(strict=True)
+    if source.is_symlink():
+        raise UnsafePathError(f"origem é um link simbólico: {source}")
+    if not source.exists():
+        raise FileNotFoundError(f"origem não existe: {source}")
+
+    source_resolved = source.resolve(strict=True)
+    target_resolved = ensure_within(target, destination_root_resolved)
+    ensure_within(source_resolved, source_root_resolved)
+    _validate_existing_components(source_root_resolved, source)
+    if not source_resolved.is_file():
+        raise UnsafePathError(f"origem não é um arquivo regular: {source}")
+    if target.exists() or target.is_symlink():
+        raise FileExistsError(f"destino já existe: {target}")
+    _validate_destination_components(destination_root_resolved, target.parent)
+    return source_resolved, target_resolved
+
+
+def _validate_existing_components(root: Path, path: Path) -> None:
+    root_resolved = root.resolve(strict=True)
+    try:
+        relative = path.absolute().relative_to(root_resolved)
+    except ValueError as exc:
+        raise UnsafePathError(f"caminho fora da raiz permitida: {path}") from exc
+    current = root_resolved
+    for component in relative.parts:
+        current /= component
+        if current.is_symlink():
+            raise UnsafePathError(f"componente é link simbólico: {current}")
 
 
 def _validate_destination_components(root: Path, parent: Path) -> None:
