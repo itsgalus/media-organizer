@@ -159,3 +159,126 @@ def test_manually_supplied_outside_source_is_conflict(tmp_path: Path) -> None:
     outside = tmp_path.parent / "Escape.2020.mkv"
     operation = build_plan([FoundFile(outside, ".mkv")], make_config(tmp_path))[0]
     assert operation.status is OperationStatus.CONFLICT
+
+
+def test_legacy_local_sequence_uses_directory_context(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, f"Legacy Show/Temporada 1/{number:02d} Episode.divx")
+        for number in range(1, 4)
+    ]
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    targets = {operation.source: operation.target for operation in plan}
+    assert [
+        targets[source].name if targets[source] is not None else None for source in sources
+    ] == [
+        "Legacy Show S01E01.divx",
+        "Legacy Show S01E02.divx",
+        "Legacy Show S01E03.divx",
+    ]
+
+
+def test_legacy_local_numbering_preserves_episode_numbers_with_gaps(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, f"Legacy Show/Temporada 1/{number:02d} Episode.divx")
+        for number in (1, 2, 28)
+    ]
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    targets = {operation.source: operation.target for operation in plan}
+    assert [
+        targets[source].name if targets[source] is not None else None for source in sources
+    ] == [
+        "Legacy Show S01E01.divx",
+        "Legacy Show S01E02.divx",
+        "Legacy Show S01E28.divx",
+    ]
+
+
+def test_legacy_absolute_sequence_is_rebased_safely(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, f"Legacy Show/Temporada 3/{number} Episode.avi") for number in (57, 58, 59)
+    ]
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    targets = {operation.source: operation.target for operation in plan}
+    assert [
+        targets[source].name if targets[source] is not None else None for source in sources
+    ] == [
+        "Legacy Show S03E01.avi",
+        "Legacy Show S03E02.avi",
+        "Legacy Show S03E03.avi",
+    ]
+
+
+def test_legacy_absolute_sequence_57_to_85_maps_to_29_episodes(tmp_path: Path) -> None:
+    sources = [
+        touch(tmp_path, f"Batman The Animated Series/Temporada 3/{number} Episode.avi")
+        for number in range(57, 86)
+    ]
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    targets = {operation.source: operation.target for operation in plan}
+    assert len(plan) == 29
+    assert targets[sources[0]] is not None
+    assert targets[sources[0]].name == "Batman The Animated Series S03E01.avi"
+    assert targets[sources[-1]] is not None
+    assert targets[sources[-1]].name == "Batman The Animated Series S03E29.avi"
+
+
+@pytest.mark.parametrize(
+    "numbers",
+    [
+        (57, 59, 60),
+        (57,),
+    ],
+)
+def test_ambiguous_legacy_absolute_numbers_remain_unknown(
+    tmp_path: Path, numbers: tuple[int, ...]
+) -> None:
+    for number in numbers:
+        touch(tmp_path, f"Legacy Show/Temporada 3/{number} Episode {number}.avi")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    assert all(operation.media_type is MediaType.UNKNOWN for operation in plan)
+
+
+def test_duplicate_legacy_numbers_remain_unknown(tmp_path: Path) -> None:
+    touch(tmp_path, "Legacy Show/Temporada 3/57 First.avi")
+    touch(tmp_path, "Legacy Show/Temporada 3/57 Second.avi")
+    touch(tmp_path, "Legacy Show/Temporada 3/58 Third.avi")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    assert all(operation.media_type is MediaType.UNKNOWN for operation in plan)
+
+
+def test_explicit_and_legacy_formats_are_not_mixed(tmp_path: Path) -> None:
+    explicit = touch(tmp_path, "Legacy Show/Temporada 3/Show.S03E01.avi")
+    legacy = touch(tmp_path, "Legacy Show/Temporada 3/57 Episode.avi")
+    config = make_config(tmp_path)
+    plan = build_plan(scan_files(config), config)
+    operations = {operation.source: operation for operation in plan}
+    assert operations[explicit].media_type is MediaType.EPISODE
+    assert operations[legacy].media_type is MediaType.UNKNOWN
+
+
+def test_legacy_planner_output_is_deterministic(tmp_path: Path) -> None:
+    for number in (3, 1, 2):
+        touch(tmp_path, f"Legacy Show/Season 1/{number:02d} Episode.divx")
+    config = make_config(tmp_path)
+    first = build_plan(scan_files(config), config)
+    second = build_plan(scan_files(config), config)
+    assert [(item.source, item.target) for item in first] == [
+        (item.source, item.target) for item in second
+    ]
+
+
+def test_apply_moves_legacy_episode_to_correct_season(tmp_path: Path) -> None:
+    source = touch(tmp_path, "Legacy Show/Temporada 1/01 Pilot.divx", b"episode")
+    config = make_config(tmp_path)
+    operations = build_plan(scan_files(config), config)
+    result = apply_plan(operations, config)
+    destination = tmp_path / "series/Legacy Show/Season 01/Legacy Show S01E01.divx"
+    assert result.moved == 1
+    assert not source.exists()
+    assert destination.read_bytes() == b"episode"

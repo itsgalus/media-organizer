@@ -61,7 +61,7 @@ incoming_dir = "incoming"
 movies_dir = "movies"
 series_dir = "series"
 
-video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".m4v"]
+video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".m4v", ".divx"]
 subtitle_extensions = [".srt", ".ass", ".ssa", ".vtt", ".sub"]
 
 preserve_technical_tags_for_movies = true
@@ -85,6 +85,12 @@ A varredura percorre `incoming` recursivamente e considera somente as extensões
 de vídeo e legenda configuradas. Arquivos e diretórios ocultos, além de links
 simbólicos, são ignorados. Itens auxiliares como JPG, NFO, TXT e ZIP permanecem
 intactos e não entram no pipeline.
+
+Séries legadas também podem usar uma pasta de série seguida por `Temporada 1`,
+`Season 01` ou `S01`, com arquivos numerados no início. Sequências locais
+começando em 1 são mantidas. Numeração absoluta só é convertida quando todos os
+vídeos numerados da temporada formam uma sequência contínua, sem duplicidades,
+com pelo menos dois arquivos; sequências ambíguas permanecem `UNKNOWN`.
 
 Para aplicar apenas as operações sem conflito:
 

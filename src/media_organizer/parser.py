@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from media_organizer.models import Episode, Movie
@@ -11,6 +12,8 @@ EPISODE_RE = re.compile(
 )
 YEAR_RE = re.compile(r"(?<!\d)(?P<year>19\d{2}|20\d{2})(?!\d)")
 NOISE_RE = re.compile(r"(?i)^(?:torrent|www|com|org|net|[a-f0-9]{8,}|rarbg|yts|eztv)$")
+SEASON_DIRECTORY_RE = re.compile(r"(?i)^(?:temporada|season)\s*0*(\d{1,2})$|^S(\d{2})$")
+LEGACY_EPISODE_RE = re.compile(r"^(?P<number>\d{1,3})(?:\s+|\s*[-.]\s+).+")
 
 TECHNICAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Resolution
@@ -61,6 +64,14 @@ TECHNICAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class LegacyEpisodeCandidate:
+    series: str
+    season: int
+    absolute_number: int
+    extension: str
+
+
 def clean_title(raw: str) -> str:
     words = re.sub(r"[._]+", " ", raw)
     words = re.sub(r"(?<!\w)-|-(?!\w)", " ", words)
@@ -85,6 +96,64 @@ def parse_episode(path: Path) -> Episode | None:
     if not series or season < 0 or any(number < 1 for number in episodes):
         return None
     return Episode(series=series, season=season, episodes=episodes, extension=path.suffix.lower())
+
+
+def legacy_episode_candidate(
+    path: Path,
+    incoming_root: Path,
+) -> LegacyEpisodeCandidate | None:
+    try:
+        relative = path.resolve(strict=False).relative_to(incoming_root.resolve(strict=False))
+    except ValueError:
+        return None
+    if len(relative.parts) < 3:
+        return None
+
+    season_match = SEASON_DIRECTORY_RE.fullmatch(path.parent.name.strip())
+    if season_match is None:
+        return None
+    season = int(season_match.group(1) or season_match.group(2))
+    if season < 0:
+        return None
+
+    number_match = LEGACY_EPISODE_RE.match(path.stem)
+    if number_match is None:
+        return None
+    number = int(number_match.group("number"))
+    if number < 1:
+        return None
+
+    series = clean_title(path.parent.parent.name)
+    if not series or path.parent.parent.resolve(strict=False) == incoming_root.resolve(
+        strict=False
+    ):
+        return None
+    return LegacyEpisodeCandidate(series, season, number, path.suffix.lower())
+
+
+def parse_episode_with_context(
+    path: Path,
+    incoming_root: Path,
+    *,
+    episode_number: int | None = None,
+) -> Episode | None:
+    explicit = parse_episode(path)
+    if explicit is not None:
+        return explicit
+    candidate = legacy_episode_candidate(path, incoming_root)
+    if candidate is None:
+        return None
+    normalized_number = episode_number
+    if normalized_number is None and candidate.absolute_number == 1:
+        normalized_number = 1
+    if normalized_number is None or normalized_number < 1:
+        return None
+    return Episode(
+        series=candidate.series,
+        season=candidate.season,
+        episodes=(normalized_number,),
+        extension=candidate.extension,
+    )
 
 
 def parse_movie(path: Path) -> Movie | None:

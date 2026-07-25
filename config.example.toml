@@ -8,7 +8,8 @@ video_extensions = [
   ".mp4",
   ".avi",
   ".mov",
-  ".m4v"
+  ".m4v",
+  ".divx"
 ]
 
 subtitle_extensions = [
@@ -21,4 +22,3 @@ subtitle_extensions = [
 
 preserve_technical_tags_for_movies = true
 preserve_technical_tags_for_series = false
-

@@ -70,6 +70,15 @@ def test_uppercase_video_extension(tmp_path: Path) -> None:
     assert result[0].extension == ".mkv"
 
 
+@pytest.mark.parametrize("extension", [".divx", ".DIVX"])
+def test_divx_extension_is_scanned_case_insensitively(tmp_path: Path, extension: str) -> None:
+    config = make_config(tmp_path)
+    episode = create_file(tmp_path, f"episode{extension}")
+    result = list(scan_files(config))
+    assert [item.path for item in result] == [episode]
+    assert result[0].extension == ".divx"
+
+
 def test_uppercase_subtitle_extension(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     subtitle = create_file(tmp_path, "Movie.2020.en.SRT")

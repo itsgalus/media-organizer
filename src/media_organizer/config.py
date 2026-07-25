@@ -4,7 +4,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v")
+DEFAULT_VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov", ".m4v", ".divx")
 DEFAULT_SUBTITLE_EXTENSIONS = (".srt", ".ass", ".ssa", ".vtt", ".sub")
 DIRECTORY_FIELDS = ("incoming_dir", "movies_dir", "series_dir")
 

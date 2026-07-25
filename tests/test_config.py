@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from media_organizer.config import Config, ConfigurationError, load_config
+from media_organizer.config import (
+    DEFAULT_VIDEO_EXTENSIONS,
+    Config,
+    ConfigurationError,
+    load_config,
+)
 
 
 def test_default_config_is_valid(tmp_path: Path) -> None:
@@ -12,6 +17,10 @@ def test_default_config_is_valid(tmp_path: Path) -> None:
         "movies",
         "series",
     )
+
+
+def test_divx_is_a_default_video_extension() -> None:
+    assert ".divx" in DEFAULT_VIDEO_EXTENSIONS
 
 
 def test_media_root_becomes_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
