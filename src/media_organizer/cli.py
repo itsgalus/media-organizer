@@ -7,6 +7,12 @@ import shutil
 import sys
 from pathlib import Path
 
+from media_organizer.audit import (
+    AuditReportError,
+    audit_counts,
+    build_audit_report,
+    write_audit_report,
+)
 from media_organizer.config import Config, ConfigurationError, load_config
 from media_organizer.models import MediaType, OperationStatus, PlannedOperation
 from media_organizer.organizer import apply_plan
@@ -18,8 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="media-organizer",
         description=(
-            "Organiza mídia local com segurança: scan apenas planeja, apply move arquivos "
-            "e doctor diagnostica configuração e filesystem."
+            "Organiza mídia local com segurança: scan apenas planeja, apply move arquivos, "
+            "audit gera um relatório e doctor diagnostica configuração e filesystem."
         ),
     )
     parser.add_argument(
@@ -58,6 +64,23 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="diagnostica configuração, diretórios e filesystem",
         description="Verifica configuração, diretórios, permissões, espaço e filesystem.",
+    )
+    audit_parser = commands.add_parser(
+        "audit",
+        help="analisa a biblioteca sem mover e gera relatório",
+        description="Analisa a biblioteca, não move arquivos e gera relatório de validação.",
+    )
+    audit_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("media-organizer-audit.txt"),
+        help="caminho do relatório (padrão: media-organizer-audit.txt)",
+    )
+    audit_parser.add_argument(
+        "--format",
+        choices=("text", "tsv"),
+        default="text",
+        help="formato do relatório (padrão: text)",
     )
     return parser
 
@@ -188,12 +211,31 @@ def _confirm_apply(operations: list[PlannedOperation]) -> bool:
     return answer.strip().casefold() in {"y", "yes", "s", "sim"}
 
 
+def _run_audit(args: argparse.Namespace, config: Config) -> int:
+    operations = build_plan(scan_files(config), config)
+    report = build_audit_report(operations, config, report_format=args.format)
+    write_audit_report(args.output, report)
+    counts = audit_counts(operations)
+    if not args.quiet:
+        print("Audit complete.")
+    print(f"Report: {args.output.absolute()}")
+    print(f"Movies: {counts['movies']}")
+    print(f"Episodes: {counts['episodes']}")
+    print(f"Subtitles: {counts['subtitles']}")
+    print(f"Unknown: {counts['unknown']}")
+    print(f"Conflicts: {counts['conflicts']}")
+    print(f"Recognized: {counts['percentage']:.1f}%")
+    return 0
+
+
 def _run(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
     config = load_config(args.config)
     if args.command == "doctor":
         return _doctor(config)
+    if args.command == "audit":
+        return _run_audit(args, config)
 
     operations = build_plan(scan_files(config), config)
     if not args.quiet:
@@ -224,6 +266,9 @@ def main(argv: list[str] | None = None) -> int:
         return _run(argv)
     except ConfigurationError as exc:
         print(f"Erro de configuração: {exc}", file=sys.stderr)
+        return 2
+    except AuditReportError as exc:
+        print(f"Erro de relatório: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         print("Operação interrompida pelo usuário.", file=sys.stderr)

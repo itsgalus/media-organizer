@@ -127,6 +127,50 @@ Depois de revisar o plano, o apply pode ser executado separadamente:
 media-organizer --config /tmp/media-organizer-demo/config.toml apply
 ```
 
+## Audit de biblioteca
+
+O audit executa scanner e planner, mas nunca move arquivos. Ele gera uma
+evidência persistente para revisar itens `UNKNOWN`, conflitos e destinos antes
+do primeiro apply real:
+
+```bash
+media-organizer --config config.toml audit
+media-organizer --config config.toml audit --output audit-report.txt
+media-organizer --config config.toml audit --format tsv --output audit-report.tsv
+```
+
+O formato text é voltado à leitura humana; TSV facilita filtros e planilhas.
+Relatórios existentes não são sobrescritos. Arquivos JPG, NFO, TXT, ZIP e outras
+extensões não configuradas são ignorados, enquanto `UNKNOWN` e `CONFLICT` devem
+ser revisados. Guarde o relatório como evidência dessa revisão.
+
+### Validação real controlada
+
+Este fluxo cria arquivos vazios em uma biblioteca descartável e não executa
+apply:
+
+```bash
+rm -rf /tmp/media-organizer-real-test
+mkdir -p /tmp/media-organizer-real-test/incoming
+
+touch "/tmp/media-organizer-real-test/incoming/Interstellar.2014.1080p.mkv"
+touch "/tmp/media-organizer-real-test/incoming/Show.S01E01.mkv"
+touch "/tmp/media-organizer-real-test/incoming/Show.S01E01.pt-BR.srt"
+touch "/tmp/media-organizer-real-test/incoming/video-final-novo.mkv"
+touch "/tmp/media-organizer-real-test/incoming/poster.jpg"
+
+cat > /tmp/media-organizer-real-test/config.toml <<'EOF'
+media_root = "/tmp/media-organizer-real-test"
+incoming_dir = "incoming"
+movies_dir = "movies"
+series_dir = "series"
+EOF
+
+media-organizer --config /tmp/media-organizer-real-test/config.toml doctor
+media-organizer --config /tmp/media-organizer-real-test/config.toml audit --output /tmp/media-organizer-real-test-audit.txt
+cat /tmp/media-organizer-real-test-audit.txt
+```
+
 ## Nomenclatura
 
 Filmes são organizados como:
