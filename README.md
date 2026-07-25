@@ -1,5 +1,15 @@
 # Media Organizer
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+
+![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)
+
+![License](https://img.shields.io/badge/license-MIT-green)
+
+![Tests](https://img.shields.io/badge/tests-396-success)
+
+![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
+
 A safe local media organizer for movies, TV series, and subtitles with planning, auditing, execution history, and undo support.
 
 **Current version:** 1.0.0
