@@ -21,6 +21,32 @@ def make_library(tmp_path: Path, *, incoming: bool = True) -> Path:
     return config_path
 
 
+def test_user_facing_sources_do_not_contain_portuguese_interface_phrases() -> None:
+    package_directory = Path(cli.__file__).parent
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            package_directory / "audit.py",
+            package_directory / "cli.py",
+            package_directory / "config.py",
+            package_directory / "history.py",
+            package_directory / "organizer.py",
+            package_directory / "presentation.py",
+        )
+    ).casefold()
+    forbidden = (
+        "configuração",
+        "nenhuma operação",
+        "operação cancelada",
+        "continuar?",
+        "desfazer esta execução",
+        "erro de relatório",
+        "link simbólico",
+        "não foi possível",
+    )
+    assert all(phrase not in sources for phrase in forbidden)
+
+
 def create_file(tmp_path: Path, name: str, content: bytes = b"media") -> Path:
     path = tmp_path / "incoming" / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,10 +61,10 @@ def run_cli(config_path: Path, *arguments: str) -> int:
 @pytest.mark.parametrize(
     ("arguments", "expected"),
     [
-        (["--help"], "scan apenas planeja"),
-        (["scan", "--help"], "Nenhum arquivo é alterado"),
-        (["apply", "--help"], "move apenas operações sem conflito"),
-        (["doctor", "--help"], "permissões, espaço e filesystem"),
+        (["--help"], "scan only plans"),
+        (["scan", "--help"], "No files are modified"),
+        (["apply", "--help"], "move only conflict-free operations"),
+        (["doctor", "--help"], "permissions, free space, and filesystem"),
     ],
 )
 def test_help(
@@ -107,7 +133,7 @@ def test_scan_with_conflict(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert run_cli(config_path, "scan") == 0
     output = capsys.readouterr().out
     assert "CONFLICT" in output
-    assert "destino já existe" in output
+    assert "target already exists" in output
 
 
 def test_normal_preview_omits_paths(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -185,7 +211,7 @@ def test_apply_yes_does_not_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     source = create_file(tmp_path, "Movie.2020.mkv")
     monkeypatch.setattr(
         "builtins.input",
-        lambda prompt: pytest.fail("input não deve ser chamado com --yes"),
+        lambda prompt: pytest.fail("input must not be called with --yes"),
     )
     assert run_cli(config_path, "apply", "--yes") == 0
     assert not source.exists()
@@ -251,7 +277,7 @@ def test_configuration_error_returns_two(
     missing = tmp_path / "missing.toml"
     assert run_cli(missing, "scan") == 2
     captured = capsys.readouterr()
-    assert "Erro de configuração" in captured.err
+    assert "Configuration error" in captured.err
     assert "Traceback" not in captured.err
 
 
@@ -275,7 +301,7 @@ def test_keyboard_interrupt_returns_130(
 
     monkeypatch.setattr(cli, "scan_files", interrupted_scan)
     assert run_cli(config_path, "scan") == 130
-    assert "Operação interrompida pelo usuário." in capsys.readouterr().err
+    assert "Operation interrupted by the user." in capsys.readouterr().err
 
 
 def test_quiet_omits_operations_but_keeps_summary(
@@ -314,7 +340,7 @@ def test_errors_are_stderr(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     run_cli(tmp_path / "missing.toml", "scan")
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "Erro de configuração" in captured.err
+    assert "Configuration error" in captured.err
 
 
 def test_python_module_entry_point_still_works() -> None:
@@ -356,9 +382,9 @@ def test_confirmation_explains_operation_counts(
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
     run_cli(config_path, "apply")
     output = capsys.readouterr().out
-    assert "1 arquivo(s) serão movidos." in output
-    assert "1 arquivo(s) serão ignorados." in output
-    assert "0 conflito(s) não será executado." in output
+    assert "1 file(s) will be moved." in output
+    assert "1 file(s) will be skipped." in output
+    assert "0 conflict(s) will not be executed." in output
 
 
 def test_apply_with_zero_operations_does_not_prompt(
@@ -367,7 +393,7 @@ def test_apply_with_zero_operations_does_not_prompt(
     config_path = make_library(tmp_path)
     monkeypatch.setattr(
         "builtins.input",
-        lambda prompt: pytest.fail("não deve pedir confirmação sem operações"),
+        lambda prompt: pytest.fail("must not request confirmation without operations"),
     )
     assert run_cli(config_path, "apply") == 0
 
@@ -487,13 +513,13 @@ def test_history_write_failure_after_move_returns_one(
     )
     assert run_cli(config_path, "apply", "--yes") == 1
     assert (tmp_path / "movies/Movie (2020)/Movie (2020).mkv").exists()
-    assert "arquivos foram movidos" in capsys.readouterr().err
+    assert "Files were moved" in capsys.readouterr().err
 
 
 def test_history_empty_and_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = make_library(tmp_path)
     assert run_cli(config_path, "history") == 0
-    assert "Nenhuma execução registrada" in capsys.readouterr().out
+    assert "No recorded executions" in capsys.readouterr().out
     for year in (2020, 2021):
         create_file(tmp_path, f"Movie.{year}.mkv")
         assert run_cli(config_path, "apply", "--yes") == 0
@@ -526,7 +552,7 @@ def test_undo_without_history_returns_zero(
 ) -> None:
     config_path = make_library(tmp_path)
     assert run_cli(config_path, "undo", "--yes") == 0
-    assert "Nenhuma execução elegível" in capsys.readouterr().out
+    assert "No eligible execution" in capsys.readouterr().out
 
 
 def test_undo_preview_and_cancel(
@@ -577,7 +603,7 @@ def test_corrupt_history_returns_two_for_undo(
     directory.mkdir(parents=True)
     (directory / "2026-07-24T000000.000000Z.json").write_text("{broken", encoding="utf-8")
     assert run_cli(config_path, "undo", "--yes") == 2
-    assert "Erro de histórico" in capsys.readouterr().err
+    assert "History error" in capsys.readouterr().err
 
 
 def test_lock_blocks_apply_and_is_preserved(tmp_path: Path) -> None:

@@ -312,7 +312,7 @@ def test_ignored_items_do_not_log_warnings(
     assert not caplog.records
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO não suportado")
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO not supported")
 def test_fifo_is_ignored(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     fifo = config.incoming_path / "stream.mkv"

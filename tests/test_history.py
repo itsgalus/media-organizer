@@ -147,7 +147,7 @@ def test_history_does_not_overwrite_existing_record(tmp_path: Path) -> None:
     record = make_record(config)
     path = write_history(record, config)
     before = path.read_bytes()
-    with pytest.raises(history.HistoryWriteError, match="não será sobrescrito"):
+    with pytest.raises(history.HistoryWriteError, match="will not be overwritten"):
         write_history(record, config)
     assert path.read_bytes() == before
 
@@ -189,8 +189,8 @@ def test_corrupt_history_is_reported_without_hiding_valid_records(tmp_path: Path
 @pytest.mark.parametrize(
     ("field", "value", "keyword"),
     [
-        ("source", "../escape.mkv", "inseguro"),
-        ("target", "/absolute.mkv", "absoluto"),
+        ("source", "../escape.mkv", "unsafe"),
+        ("target", "/absolute.mkv", "absolute"),
     ],
 )
 def test_history_rejects_unsafe_paths(tmp_path: Path, field: str, value: str, keyword: str) -> None:
@@ -344,7 +344,7 @@ def test_select_history_by_id_and_missing_id(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     record = prepare_undo(config)
     assert select_history(config, record.id) == record
-    with pytest.raises(HistoryValidationError, match="não encontrada"):
+    with pytest.raises(HistoryValidationError, match="not found"):
         select_history(config, "2026-07-24T000000.000000Z")
 
 
@@ -353,7 +353,7 @@ def test_lock_blocks_concurrent_operation_and_is_removed(tmp_path: Path) -> None
     lock_path = tmp_path / ".media-organizer/lock"
     with HistoryLock(config):
         assert lock_path.exists()
-        with pytest.raises(HistoryLockError, match="outra operação"), HistoryLock(config):
+        with pytest.raises(HistoryLockError, match="another apply/undo"), HistoryLock(config):
             pass
     assert not lock_path.exists()
 
@@ -384,6 +384,6 @@ def test_history_rejects_symbolic_metadata_directory(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
     (tmp_path / ".media-organizer").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(history.HistoryWriteError, match="link simbólico"):
+    with pytest.raises(history.HistoryWriteError, match="symbolic link"):
         write_history(make_record(config), config)
     assert list(outside.iterdir()) == []

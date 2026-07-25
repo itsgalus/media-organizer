@@ -94,7 +94,7 @@ def _move_between_roots(
     target.parent.mkdir(parents=True, exist_ok=True)
     _validate_destination_components(destination_root_resolved, target.parent)
     if not source_resolved.exists():
-        raise FileNotFoundError(f"origem desapareceu antes da movimentação: {source}")
+        raise FileNotFoundError(f"source disappeared before move: {source}")
 
     LOGGER.info("Moving: %s -> %s", source_resolved, target_resolved)
     try:
@@ -124,18 +124,18 @@ def _validate_move(
     source_root_resolved = source_root.resolve(strict=True)
     destination_root_resolved = destination_root.resolve(strict=True)
     if source.is_symlink():
-        raise UnsafePathError(f"origem é um link simbólico: {source}")
+        raise UnsafePathError(f"source is a symbolic link: {source}")
     if not source.exists():
-        raise FileNotFoundError(f"origem não existe: {source}")
+        raise FileNotFoundError(f"source does not exist: {source}")
 
     source_resolved = source.resolve(strict=True)
     target_resolved = ensure_within(target, destination_root_resolved)
     ensure_within(source_resolved, source_root_resolved)
     _validate_existing_components(source_root_resolved, source)
     if not source_resolved.is_file():
-        raise UnsafePathError(f"origem não é um arquivo regular: {source}")
+        raise UnsafePathError(f"source is not a regular file: {source}")
     if target.exists() or target.is_symlink():
-        raise FileExistsError(f"destino já existe: {target}")
+        raise FileExistsError(f"target already exists: {target}")
     _validate_destination_components(destination_root_resolved, target.parent)
     return source_resolved, target_resolved
 
@@ -145,12 +145,12 @@ def _validate_existing_components(root: Path, path: Path) -> None:
     try:
         relative = path.absolute().relative_to(root_resolved)
     except ValueError as exc:
-        raise UnsafePathError(f"caminho fora da raiz permitida: {path}") from exc
+        raise UnsafePathError(f"path outside allowed root: {path}") from exc
     current = root_resolved
     for component in relative.parts:
         current /= component
         if current.is_symlink():
-            raise UnsafePathError(f"componente é link simbólico: {current}")
+            raise UnsafePathError(f"path component is a symbolic link: {current}")
 
 
 def _validate_destination_components(root: Path, parent: Path) -> None:
@@ -159,13 +159,13 @@ def _validate_destination_components(root: Path, parent: Path) -> None:
     try:
         relative = parent_absolute.relative_to(root_resolved)
     except ValueError as exc:
-        raise UnsafePathError(f"diretório de destino fora da raiz configurada: {parent}") from exc
+        raise UnsafePathError(f"target directory outside configured root: {parent}") from exc
 
     current = root_resolved
     for component in relative.parts:
         current /= component
         if current.is_symlink():
-            raise UnsafePathError(f"componente de destino é link simbólico: {current}")
+            raise UnsafePathError(f"target component is a symbolic link: {current}")
     ensure_within(parent, root_resolved)
 
 

@@ -548,7 +548,7 @@ def test_contextual_subtitles_with_same_target_are_conflicts(tmp_path: Path) -> 
     assert len({item.target for item in operations}) == 1
     assert all(item.status is OperationStatus.CONFLICT for item in operations)
     assert all(
-        item.conflict is not None and "mesmo destino" in item.conflict.reason for item in operations
+        item.conflict is not None and "same target" in item.conflict.reason for item in operations
     )
 
 

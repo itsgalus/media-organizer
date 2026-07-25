@@ -293,9 +293,9 @@ def render_confirmation(
 ) -> None:
     message = "\n".join(
         (
-            f"{planned} arquivo(s) serão movidos.",
-            f"{ignored} arquivo(s) serão ignorados.",
-            f"{conflicts} conflito(s) não será executado.",
+            f"{planned} file(s) will be moved.",
+            f"{ignored} file(s) will be skipped.",
+            f"{conflicts} conflict(s) will not be executed.",
         )
     )
     console.print(Panel(Text(message), title="Confirmation", border_style="yellow", expand=False))
@@ -316,7 +316,7 @@ def render_history(
     compact: bool,
 ) -> None:
     if not entries:
-        render_message("Nenhuma execução registrada.", console=console, style="yellow")
+        render_message("No recorded executions.", console=console, style="yellow")
         return
     if compact:
         for entry in entries:
@@ -324,7 +324,7 @@ def render_history(
                 line = Text("INVALID\t")
                 line.append(entry.path.name)
                 line.append("\t")
-                line.append(entry.error or "histórico inválido")
+                line.append(entry.error or "invalid history record")
             else:
                 record = entry.record
                 line = Text(record.id)
@@ -347,7 +347,7 @@ def render_history(
                 Text(""),
                 Text(""),
                 Text("invalid", style="red"),
-                Text(entry.error or "histórico inválido"),
+                Text(entry.error or "invalid history record"),
             )
             continue
         record = entry.record

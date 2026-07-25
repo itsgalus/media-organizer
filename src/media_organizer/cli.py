@@ -55,88 +55,86 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="media-organizer",
         description=(
-            "Organiza mídia local com segurança: scan apenas planeja, apply move arquivos, "
-            "audit gera relatório, history lista execuções, undo desfaz com validação e "
-            "doctor diagnostica configuração e filesystem."
+            "Safely organizes local media: scan only plans, apply moves files, audit creates "
+            "reports, history lists executions, undo restores with validation, and doctor "
+            "diagnoses configuration and filesystem issues."
         ),
     )
     parser.add_argument(
         "--config",
         type=Path,
         default=Path("config.toml"),
-        help="arquivo TOML de configuração (padrão: config.toml)",
+        help="TOML configuration file (default: config.toml)",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="mostra logs detalhados no stderr",
+        help="show detailed logs on stderr",
     )
     parser.add_argument(
         "--quiet",
         action="store_true",
-        help="omite operações individuais, mas mantém o resumo",
+        help="omit individual operations but keep the summary",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser(
         "scan",
-        help="analisa incoming e mostra o plano sem mover arquivos",
-        description="Analisa incoming e exibe o plano proposto. Nenhum arquivo é alterado.",
+        help="scan incoming and show the plan without moving files",
+        description="Scan incoming and display the proposed plan. No files are modified.",
     )
     apply_parser = commands.add_parser(
         "apply",
-        help="mostra o plano e move operações autorizadas",
-        description="Analisa, mostra o plano, confirma e move apenas operações sem conflito.",
+        help="show the plan and move authorized operations",
+        description="Scan, display the plan, confirm, and move only conflict-free operations.",
     )
     apply_parser.add_argument(
         "--yes",
         action="store_true",
-        help="executa sem pedir confirmação interativa",
+        help="execute without interactive confirmation",
     )
     commands.add_parser(
         "doctor",
-        help="diagnostica configuração, diretórios e filesystem",
-        description="Verifica configuração, diretórios, permissões, espaço e filesystem.",
+        help="diagnose configuration, directories, and filesystem",
+        description="Check configuration, directories, permissions, free space, and filesystem.",
     )
     audit_parser = commands.add_parser(
         "audit",
-        help="analisa a biblioteca sem mover e gera relatório",
-        description="Analisa a biblioteca, não move arquivos e gera relatório de validação.",
+        help="analyze the library without moving files and create a report",
+        description="Analyze the library, move no files, and create a validation report.",
     )
     audit_parser.add_argument(
         "--output",
         type=Path,
         default=Path("media-organizer-audit.txt"),
-        help="caminho do relatório (padrão: media-organizer-audit.txt)",
+        help="report path (default: media-organizer-audit.txt)",
     )
     audit_parser.add_argument(
         "--format",
         choices=("text", "tsv"),
         default="text",
-        help="formato do relatório (padrão: text)",
+        help="report format (default: text)",
     )
     history_parser = commands.add_parser(
         "history",
-        help="lista execuções de apply registradas",
-        description=(
-            "Lista o histórico persistente de execuções, da mais recente para a mais antiga."
-        ),
+        help="list recorded apply executions",
+        description="List persistent execution history from newest to oldest.",
     )
     history_parser.add_argument(
         "--limit",
         type=_positive_int,
         default=10,
-        help="quantidade máxima de registros (padrão: 10)",
+        help="maximum number of records (default: 10)",
     )
     undo_parser = commands.add_parser(
         "undo",
-        help="desfaz com segurança uma execução registrada",
-        description="Valida e desfaz a última execução elegível sem sobrescrever arquivos.",
+        help="safely undo a recorded execution",
+        description="Validate and undo the latest eligible execution without overwriting files.",
     )
-    undo_parser.add_argument("--id", dest="execution_id", help="ID específico da execução")
+    undo_parser.add_argument("--id", dest="execution_id", help="specific execution ID")
     undo_parser.add_argument(
         "--yes",
         action="store_true",
-        help="executa sem pedir confirmação interativa",
+        help="execute without interactive confirmation",
     )
     return parser
 
@@ -145,9 +143,9 @@ def _positive_int(value: str) -> int:
     try:
         number = int(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("deve ser um inteiro positivo") from exc
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
     if number < 1:
-        raise argparse.ArgumentTypeError("deve ser um inteiro positivo")
+        raise argparse.ArgumentTypeError("must be a positive integer")
     return number
 
 
@@ -173,13 +171,19 @@ def _doctor(config: Config, *, quiet: bool) -> int:
         )
     checks: list[tuple[str, bool, str]] = []
     root = config.media_root
-    checks.append(("configuração válida", True, str(root)))
-    checks.append(("raiz existente", root.is_dir(), str(root)))
-    checks.append(("incoming existente", config.incoming_path.is_dir(), str(config.incoming_path)))
-    checks.append(("raiz legível", os.access(root, os.R_OK), str(root)))
-    checks.append(("raiz gravável", os.access(root, os.W_OK), str(root)))
+    checks.append(("Configuration OK", True, str(root)))
+    checks.append(("Media root exists", root.is_dir(), str(root)))
     checks.append(
-        ("incoming legível", os.access(config.incoming_path, os.R_OK), str(config.incoming_path))
+        ("Incoming directory exists", config.incoming_path.is_dir(), str(config.incoming_path))
+    )
+    checks.append(("Media root readable", os.access(root, os.R_OK), str(root)))
+    checks.append(("Media root writable", os.access(root, os.W_OK), str(root)))
+    checks.append(
+        (
+            "Incoming directory readable",
+            os.access(config.incoming_path, os.R_OK),
+            str(config.incoming_path),
+        )
     )
     for name, destination in (("movies", config.movies_path), ("series", config.series_path)):
         try:
@@ -187,20 +191,20 @@ def _doctor(config: Config, *, quiet: bool) -> int:
             valid = True
         except ValueError:
             valid = False
-        checks.append((f"destino {name} válido", valid, str(destination)))
+        checks.append((f"{name.title()} destination valid", valid, str(destination)))
 
     if root.exists():
         usage = shutil.disk_usage(root)
-        checks.append(("espaço livre", usage.free > 0, f"{usage.free / 1024**3:.2f} GiB"))
+        checks.append(("Free space", usage.free > 0, f"{usage.free / 1024**3:.2f} GiB"))
         try:
             filesystem = str(root.stat().st_dev)
         except OSError as exc:
             filesystem = str(exc)
-        checks.append(("filesystem acessível", root.is_dir(), f"device={filesystem}"))
+        checks.append(("Filesystem accessible", root.is_dir(), f"device={filesystem}"))
 
     suspicious = _suspicious_links(config)
     checks.append(
-        ("links simbólicos suspeitos", not suspicious, ", ".join(map(str, suspicious)) or "nenhum")
+        ("Suspicious symbolic links", not suspicious, ", ".join(map(str, suspicious)) or "none")
     )
     render_doctor(checks, console=console)
     return 0 if all(ok for _, ok, _ in checks) else 3
@@ -233,7 +237,7 @@ def _confirm_apply(operations: list[PlannedOperation]) -> bool:
         console=create_console(),
     )
     try:
-        answer = input("Continuar? [y/N] ")
+        answer = input("Continue? [y/N] ")
     except EOFError:
         answer = ""
     return answer.strip().casefold() in {"y", "yes", "s", "sim"}
@@ -300,7 +304,7 @@ def _run_history(args: argparse.Namespace, config: Config) -> int:
 
 def _confirm_undo() -> bool:
     try:
-        answer = input("Desfazer esta execução? [y/N] ")
+        answer = input("Undo this execution? [y/N] ")
     except EOFError:
         answer = ""
     return answer.strip().casefold() in {"y", "yes", "s", "sim"}
@@ -311,7 +315,7 @@ def _run_undo(args: argparse.Namespace, config: Config) -> int:
     record = select_history(config, args.execution_id)
     if record is None:
         render_message(
-            "Nenhuma execução elegível para desfazer.",
+            "No eligible execution to undo.",
             console=console,
             style="yellow",
         )
@@ -324,13 +328,13 @@ def _run_undo(args: argparse.Namespace, config: Config) -> int:
         return 1
     if not args.yes and not _confirm_undo():
         if not args.quiet:
-            render_message("Operação cancelada.", console=console, style="yellow")
+            render_message("Operation canceled.", console=console, style="yellow")
         return 0
 
     with HistoryLock(config):
         current = select_history(config, record.id)
         if current is None:
-            raise HistoryValidationError(f"execução não encontrada: {record.id}")
+            raise HistoryValidationError(f"execution not found: {record.id}")
         locked_blockers = validate_undo(current, config)
         if locked_blockers:
             render_undo_blockers(locked_blockers, console=create_console(stderr=True))
@@ -385,9 +389,7 @@ def _run(argv: list[str] | None = None) -> int:
     runnable = sum(op.status is OperationStatus.PLANNED for op in operations)
     if not runnable:
         if not args.quiet:
-            render_message(
-                "Nenhuma operação segura para executar.", console=console, style="yellow"
-            )
+            render_message("No safe operations to execute.", console=console, style="yellow")
         render_summary(
             operations,
             console=console,
@@ -398,7 +400,7 @@ def _run(argv: list[str] | None = None) -> int:
 
     if not args.yes and not _confirm_apply(operations):
         if not args.quiet:
-            render_message("Operação cancelada.", console=console, style="yellow")
+            render_message("Operation canceled.", console=console, style="yellow")
         return 0
 
     apply_started = time.perf_counter()
@@ -422,7 +424,7 @@ def _run(argv: list[str] | None = None) -> int:
                     write_history(interrupted_record, config)
                 except HistoryWriteError as exc:
                     render_error(
-                        f"A operação foi interrompida e o histórico falhou: {exc}",
+                        f"The operation was interrupted and history recording failed: {exc}",
                         console=create_console(stderr=True),
                     )
             raise
@@ -445,7 +447,7 @@ def _run(argv: list[str] | None = None) -> int:
     )
     if history_error is not None:
         render_error(
-            f"Os arquivos foram movidos, mas o histórico falhou: {history_error}",
+            f"Files were moved, but history recording failed: {history_error}",
             console=create_console(stderr=True),
         )
     return 1 if result.failed or history_error is not None else 0
@@ -456,19 +458,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run(argv)
     except ConfigurationError as exc:
-        render_error(f"Erro de configuração: {exc}", console=error_console)
+        render_error(f"Configuration error: {exc}", console=error_console)
         return 2
     except AuditReportError as exc:
-        render_error(f"Erro de relatório: {exc}", console=error_console)
+        render_error(f"Report error: {exc}", console=error_console)
         return 2
     except HistoryValidationError as exc:
-        render_error(f"Erro de histórico: {exc}", console=error_console)
+        render_error(f"History error: {exc}", console=error_console)
         return 2
     except (HistoryLockError, HistoryWriteError) as exc:
-        render_error(f"Falha operacional de histórico: {exc}", console=error_console)
+        render_error(f"History storage error: {exc}", console=error_console)
         return 1
     except KeyboardInterrupt:
-        render_error("Operação interrompida pelo usuário.", console=error_console)
+        render_error("Operation interrupted by the user.", console=error_console)
         return 130
 
 

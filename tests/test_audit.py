@@ -60,7 +60,7 @@ def test_audit_help(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["audit", "--help"])
     assert raised.value.code == 0
     output = capsys.readouterr().out
-    assert "não move arquivos" in output
+    assert "move no files" in output
     assert "--output" in output
     assert "--format" in output
 
@@ -122,7 +122,7 @@ def test_existing_report_returns_two_without_overwrite(
     report.write_text("keep me", encoding="utf-8")
     assert run_audit(config_path, report) == 2
     assert report.read_text(encoding="utf-8") == "keep me"
-    assert "Escolha outro caminho" in capsys.readouterr().err
+    assert "Choose another path" in capsys.readouterr().err
 
 
 def test_text_report_header(tmp_path: Path) -> None:
@@ -255,7 +255,7 @@ def test_conflict_does_not_fail_audit(tmp_path: Path) -> None:
     destination.touch()
     report = tmp_path / "audit.txt"
     assert run_audit(config_path, report) == 0
-    assert "reason: destino já existe" in report.read_text(encoding="utf-8")
+    assert "reason: target already exists" in report.read_text(encoding="utf-8")
 
 
 def test_tsv_header_and_one_line_per_operation(tmp_path: Path) -> None:
@@ -325,7 +325,7 @@ def test_report_write_error_returns_two(tmp_path: Path, capsys: pytest.CaptureFi
     config_path = make_library(tmp_path)
     report = tmp_path / "missing-parent/audit.txt"
     assert run_audit(config_path, report) == 2
-    assert "Erro de relatório" in capsys.readouterr().err
+    assert "Report error" in capsys.readouterr().err
 
 
 def test_audit_keyboard_interrupt_returns_130(
@@ -373,7 +373,7 @@ def test_audit_never_calls_apply_plan(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         cli,
         "apply_plan",
-        lambda *args, **kwargs: pytest.fail("audit não pode chamar apply_plan"),
+        lambda *args, **kwargs: pytest.fail("audit must not call apply_plan"),
     )
     assert run_audit(config_path, tmp_path / "audit.txt") == 0
 

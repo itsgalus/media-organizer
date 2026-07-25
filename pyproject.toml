@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "media-organizer"
 version = "1.0.0"
-description = "Organizador local e seguro de bibliotecas de mídia para Plex"
+description = "Safe local media library organizer for Plex"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

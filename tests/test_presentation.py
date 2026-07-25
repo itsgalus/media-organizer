@@ -355,11 +355,11 @@ def test_conflict_and_error_are_rendered_in_details(tmp_path: Path) -> None:
         media_type=MediaType.MOVIE,
         target=tmp_path / "movies/Movie (2020)/Movie (2020).mkv",
         status=OperationStatus.CONFLICT,
-        conflict=Conflict("destino já existe"),
+        conflict=Conflict("target already exists"),
     )
     render_operations([operation], config, console=console)
     assert "CONFLICT" in stream.getvalue()
-    assert "destino já existe" in stream.getvalue()
+    assert "target already exists" in stream.getvalue()
     assert "source: incoming/Movie.2020.mkv" in stream.getvalue()
     assert "target: movies/Movie (2020)/Movie (2020).mkv" in stream.getvalue()
 
@@ -458,7 +458,7 @@ def test_conflict_and_error_markup_are_rendered_literally(tmp_path: Path) -> Non
     ]
 
     render_operations(operations, config, console=console)
-    render_error(f"Erro: {markers}", console=console)
+    render_error(f"Error: {markers}", console=console)
 
     output = stream.getvalue()
     assert output.count(markers) == 3
@@ -486,13 +486,13 @@ def test_history_and_undo_render_external_markup_literally(tmp_path: Path) -> No
         (operation,),
     )
     render_history(
-        [HistoryEntry(tmp_path / "[not-a-style].json", None, "erro [red]literal[/red]")],
+        [HistoryEntry(tmp_path / "[not-a-style].json", None, "error [red]literal[/red]")],
         console=console,
         compact=False,
     )
     render_undo_preview(record, console=console)
-    render_undo_blockers(("bloqueio [bold]literal[/bold]",), console=console)
-    render_undo_summary(UndoResult(record, 0, ("erro",)), console=console, compact=True)
+    render_undo_blockers(("blocker [bold]literal[/bold]",), console=console)
+    render_undo_summary(UndoResult(record, 0, ("error",)), console=console, compact=True)
     output = stream.getvalue()
     for literal in (
         "[not-a-style]",

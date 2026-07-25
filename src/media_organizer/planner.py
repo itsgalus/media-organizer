@@ -49,7 +49,7 @@ def ensure_within(path: Path, root: Path) -> Path:
     try:
         candidate.relative_to(root_resolved)
     except ValueError as exc:
-        raise UnsafePathError(f"caminho fora da raiz configurada: {path}") from exc
+        raise UnsafePathError(f"path outside configured root: {path}") from exc
     return candidate
 
 
@@ -314,11 +314,11 @@ def _mark_conflicts(operations: list[PlannedOperation]) -> None:
         target = operation.target.resolve(strict=False)
         reason: str | None = None
         if operation.source.resolve(strict=False) == target:
-            reason = "origem e destino são iguais"
+            reason = "source and target are the same"
         elif target.exists():
-            reason = "destino já existe"
+            reason = "target already exists"
         elif target in targets:
-            reason = "mais de um arquivo aponta para o mesmo destino"
+            reason = "more than one file points to the same target"
             previous = targets[target]
             previous.status = OperationStatus.CONFLICT
             previous.conflict = Conflict(reason)

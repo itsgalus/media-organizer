@@ -48,7 +48,7 @@ def build_audit_report(
     if report_format == "tsv":
         return _build_tsv(ordered, config)
     if report_format != "text":
-        raise ValueError(f"formato de relatório inválido: {report_format}")
+        raise ValueError(f"invalid report format: {report_format}")
     return _build_text(ordered, config, generated_at or datetime.now().astimezone())
 
 
@@ -60,7 +60,7 @@ def write_audit_report(path: Path, content: str) -> None:
             report_file.write(content)
     except FileExistsError as exc:
         raise AuditReportError(
-            f"o relatório já existe: {path}. Escolha outro caminho com --output."
+            f"report already exists: {path}. Choose another path with --output."
         ) from exc
     except OSError as exc:
         if created:
@@ -68,7 +68,7 @@ def write_audit_report(path: Path, content: str) -> None:
                 path.unlink(missing_ok=True)
             except OSError:
                 LOGGER.exception("Unable to remove partial audit report: %s", path)
-        raise AuditReportError(f"não foi possível criar o relatório {path}: {exc}") from exc
+        raise AuditReportError(f"could not create report {path}: {exc}") from exc
 
 
 def _build_text(operations: list[PlannedOperation], config: Config, generated_at: datetime) -> str:

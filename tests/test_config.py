@@ -44,12 +44,12 @@ def test_directory_normalization(tmp_path: Path, value: str, expected: str) -> N
 
 @pytest.mark.parametrize("value", ["", "   "])
 def test_empty_directory_rejected(tmp_path: Path, value: str) -> None:
-    with pytest.raises(ConfigurationError, match=r"movies_dir.*vazia"):
+    with pytest.raises(ConfigurationError, match=r"movies_dir.*empty"):
         Config(media_root=tmp_path, movies_dir=value)
 
 
 def test_absolute_directory_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"movies_dir.*absoluto"):
+    with pytest.raises(ConfigurationError, match=r"movies_dir.*absolute"):
         Config(media_root=tmp_path, movies_dir="/movies")
 
 
@@ -61,32 +61,32 @@ def test_parent_component_rejected(tmp_path: Path, value: str) -> None:
 
 @pytest.mark.parametrize("value", [".", "./", "././"])
 def test_root_directory_rejected(tmp_path: Path, value: str) -> None:
-    with pytest.raises(ConfigurationError, match=r"movies_dir.*raiz"):
+    with pytest.raises(ConfigurationError, match=r"movies_dir.*root"):
         Config(media_root=tmp_path, movies_dir=value)
 
 
 def test_equal_directories_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"iguais.*incoming_dir.*movies_dir"):
+    with pytest.raises(ConfigurationError, match=r"equal.*incoming_dir.*movies_dir"):
         Config(media_root=tmp_path, incoming_dir="data", movies_dir="data")
 
 
 def test_incoming_equal_to_series_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"iguais.*incoming_dir.*series_dir"):
+    with pytest.raises(ConfigurationError, match=r"equal.*incoming_dir.*series_dir"):
         Config(media_root=tmp_path, incoming_dir="data", series_dir="data")
 
 
 def test_normalized_equivalent_directories_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"iguais.*movies_dir.*series_dir"):
+    with pytest.raises(ConfigurationError, match=r"equal.*movies_dir.*series_dir"):
         Config(media_root=tmp_path, movies_dir="movies", series_dir="./movies/")
 
 
 def test_incoming_parent_of_movies_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"aninhados.*incoming_dir.*movies_dir"):
+    with pytest.raises(ConfigurationError, match=r"nested.*incoming_dir.*movies_dir"):
         Config(media_root=tmp_path, incoming_dir="media", movies_dir="media/movies")
 
 
 def test_movies_child_of_series_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ConfigurationError, match=r"aninhados.*movies_dir.*series_dir"):
+    with pytest.raises(ConfigurationError, match=r"nested.*movies_dir.*series_dir"):
         Config(media_root=tmp_path, movies_dir="library/movies", series_dir="library")
 
 
@@ -122,7 +122,7 @@ def test_textual_prefix_is_not_parent(tmp_path: Path) -> None:
 def test_invalid_directory_type_rejected(
     tmp_path: Path, field_name: str, value: object, type_name: str
 ) -> None:
-    with pytest.raises(ConfigurationError, match=rf"{field_name}.*tipo inválido.*{type_name}"):
+    with pytest.raises(ConfigurationError, match=rf"{field_name}.*invalid type.*{type_name}"):
         Config(media_root=tmp_path, **{field_name: value})  # type: ignore[arg-type]
 
 
@@ -138,7 +138,7 @@ def test_extension_is_lowercase(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("field_name", ["video_extensions", "subtitle_extensions"])
 def test_empty_extension_list_rejected(tmp_path: Path, field_name: str) -> None:
-    with pytest.raises(ConfigurationError, match=rf"{field_name}.*vazio"):
+    with pytest.raises(ConfigurationError, match=rf"{field_name}.*empty"):
         Config(media_root=tmp_path, **{field_name: ()})  # type: ignore[arg-type]
 
 
@@ -157,7 +157,7 @@ def test_load_config_valid(tmp_path: Path) -> None:
 
 def test_load_config_requires_media_root(tmp_path: Path) -> None:
     path = write_config(tmp_path, 'movies_dir = "movies"\n')
-    with pytest.raises(ConfigurationError, match=r"media_root.*obrigatório"):
+    with pytest.raises(ConfigurationError, match=r"media_root.*required"):
         load_config(path)
 
 
@@ -169,11 +169,11 @@ def test_load_config_requires_string_media_root(tmp_path: Path) -> None:
 
 def test_load_config_rejects_unknown_key(tmp_path: Path) -> None:
     path = write_config(tmp_path, f'media_root = "{tmp_path}"\nunknown = true\n')
-    with pytest.raises(ConfigurationError, match=r"chaves desconhecidas.*unknown"):
+    with pytest.raises(ConfigurationError, match=r"unknown keys.*unknown"):
         load_config(path)
 
 
 def test_load_config_converts_type_error(tmp_path: Path) -> None:
     path = write_config(tmp_path, f'media_root = "{tmp_path}"\nvideo_extensions = 42\n')
-    with pytest.raises(ConfigurationError, match="configuração inválida"):
+    with pytest.raises(ConfigurationError, match="invalid configuration"):
         load_config(path)

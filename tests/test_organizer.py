@@ -61,7 +61,7 @@ def test_normal_move_does_not_use_replace(tmp_path: Path, monkeypatch: pytest.Mo
     config, source, target = make_library(tmp_path)
 
     def forbidden_replace(*args: object, **kwargs: object) -> None:
-        pytest.fail("Path.replace não deve ser usado")
+        pytest.fail("Path.replace must not be used")
 
     monkeypatch.setattr(Path, "replace", forbidden_replace)
     move_file(source, target, config)
@@ -72,7 +72,7 @@ def test_normal_move_does_not_copy_content(tmp_path: Path, monkeypatch: pytest.M
     config, source, target = make_library(tmp_path)
 
     def forbidden_copy(*args: object, **kwargs: object) -> None:
-        pytest.fail("cópia não deve ocorrer no mesmo filesystem")
+        pytest.fail("copying must not occur on the same filesystem")
 
     monkeypatch.setattr(shutil, "copyfileobj", forbidden_copy)
     move_file(source, target, config)
@@ -166,7 +166,7 @@ def test_cross_device_does_not_use_copy2(tmp_path: Path, monkeypatch: pytest.Mon
     config, source, target = make_library(tmp_path)
 
     def forbidden_copy2(*args: object, **kwargs: object) -> None:
-        pytest.fail("copy2 não deve ser usado")
+        pytest.fail("copy2 must not be used")
 
     monkeypatch.setattr(os, "link", exdev_link)
     monkeypatch.setattr(shutil, "copy2", forbidden_copy2)
@@ -379,7 +379,7 @@ def test_intermediate_symlink_is_rejected(tmp_path: Path) -> None:
     real_directory.mkdir()
     (tmp_path / "movies").symlink_to(real_directory, target_is_directory=True)
     target = tmp_path / "movies/nested/movie.mkv"
-    with pytest.raises(UnsafePathError, match="link simbólico"):
+    with pytest.raises(UnsafePathError, match="symbolic link"):
         move_file(source, target, config)
     assert source.exists()
 
@@ -405,7 +405,7 @@ def test_dry_run_has_no_side_effects(tmp_path: Path) -> None:
 def test_missing_source_has_specific_error(tmp_path: Path) -> None:
     config, source, target = make_library(tmp_path)
     source.unlink()
-    with pytest.raises(FileNotFoundError, match="origem não existe"):
+    with pytest.raises(FileNotFoundError, match="source does not exist"):
         move_file(source, target, config)
 
 
@@ -413,7 +413,7 @@ def test_symlink_source_is_rejected(tmp_path: Path) -> None:
     config, source, target = make_library(tmp_path)
     link = source.with_name("link.mkv")
     link.symlink_to(source)
-    with pytest.raises(UnsafePathError, match="link simbólico"):
+    with pytest.raises(UnsafePathError, match="symbolic link"):
         move_file(link, target, config)
 
 

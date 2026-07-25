@@ -37,7 +37,7 @@ class Config:
         for name in ("video_extensions", "subtitle_extensions"):
             values = getattr(self, name)
             if not values:
-                raise ConfigurationError(f"{name} não pode estar vazio")
+                raise ConfigurationError(f"{name} cannot be empty")
             normalized = tuple(_normalize_extension(value) for value in values)
             object.__setattr__(self, name, normalized)
 
@@ -57,20 +57,20 @@ class Config:
 def _normalize_relative_directory(field_name: str, value: object) -> str:
     if not isinstance(value, str):
         raise ConfigurationError(
-            f"{field_name} possui tipo inválido: esperado string, recebido {type(value).__name__}"
+            f"{field_name} has invalid type: expected string, got {type(value).__name__}"
         )
     if not value.strip():
-        raise ConfigurationError(f"{field_name} não pode ser uma string vazia")
+        raise ConfigurationError(f"{field_name} cannot be an empty string")
 
     path = Path(value)
     if path.is_absolute():
-        raise ConfigurationError(f"{field_name} não pode ser um caminho absoluto")
+        raise ConfigurationError(f"{field_name} cannot be an absolute path")
     if ".." in path.parts:
-        raise ConfigurationError(f"{field_name} não pode conter o componente '..'")
+        raise ConfigurationError(f"{field_name} cannot contain the '..' component")
 
     normalized = Path(*path.parts).as_posix()
     if normalized == ".":
-        raise ConfigurationError(f"{field_name} não pode ser igual ao diretório raiz")
+        raise ConfigurationError(f"{field_name} cannot refer to the root directory")
     return normalized
 
 
@@ -82,11 +82,11 @@ def _validate_directory_layout(directories: dict[str, str]) -> None:
             second_parts = Path(second_value).parts
             if first_parts == second_parts:
                 raise ConfigurationError(
-                    f"diretórios iguais: {first_name} e {second_name} apontam para {first_value}"
+                    f"equal directories: {first_name} and {second_name} point to {first_value}"
                 )
             if _is_parent(first_parts, second_parts) or _is_parent(second_parts, first_parts):
                 raise ConfigurationError(
-                    f"diretórios aninhados: {first_name}={first_value} e "
+                    f"nested directories: {first_name}={first_value} and "
                     f"{second_name}={second_value}"
                 )
 
@@ -97,7 +97,7 @@ def _is_parent(parent: tuple[str, ...], child: tuple[str, ...]) -> bool:
 
 def _normalize_extension(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ConfigurationError("extensões devem ser strings não vazias")
+        raise ConfigurationError("extensions must be non-empty strings")
     extension = value.strip().lower()
     return extension if extension.startswith(".") else f".{extension}"
 
@@ -107,16 +107,16 @@ def load_config(path: Path) -> Config:
         with path.open("rb") as config_file:
             raw = tomllib.load(config_file)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise ConfigurationError(f"não foi possível ler {path}: {exc}") from exc
+        raise ConfigurationError(f"could not read {path}: {exc}") from exc
 
     allowed = {field for field in Config.__dataclass_fields__ if field != "media_root"}
     unknown = set(raw) - allowed - {"media_root"}
     if unknown:
-        raise ConfigurationError(f"chaves desconhecidas: {', '.join(sorted(unknown))}")
+        raise ConfigurationError(f"unknown keys: {', '.join(sorted(unknown))}")
     media_root = raw.pop("media_root", None)
     if not isinstance(media_root, str) or not media_root:
-        raise ConfigurationError("media_root é obrigatório e deve ser uma string")
+        raise ConfigurationError("media_root is required and must be a string")
     try:
         return Config(media_root=Path(media_root), **raw)
     except TypeError as exc:
-        raise ConfigurationError(f"configuração inválida: {exc}") from exc
+        raise ConfigurationError(f"invalid configuration: {exc}") from exc
