@@ -22,6 +22,31 @@ python -m pip install -e '.[dev]'
 O pacote instala o comando `media-organizer`. Também é possível executar
 `python -m media_organizer`.
 
+## Interface Rich
+
+A CLI usa Rich para oferecer saída colorida quando o terminal suporta, tabelas
+de operações e diagnóstico, resumos visuais, progresso e métricas de tempo e
+velocidade. A apresentação também funciona sem cores e quando a saída é
+redirecionada:
+
+```bash
+media-organizer --config config.toml scan
+media-organizer --config config.toml apply
+media-organizer --config config.toml apply --yes
+media-organizer --config config.toml audit
+media-organizer --config config.toml --quiet scan
+NO_COLOR=1 media-organizer --config config.toml scan
+```
+
+Durante scan e audit, o progresso é indeterminado porque o total ainda não é
+conhecido. No apply, a barra usa o número real de operações planejadas.
+`--quiet` remove banners, tabelas e animações, mantendo um resumo compacto e
+estável. `--verbose` mantém logs INFO separados no stderr. A variável
+`NO_COLOR` desativa cores sem remover informação.
+
+Essa camada melhora apenas a apresentação; as regras de validação, conflitos e
+movimentação segura permanecem as mesmas.
+
 ## Configuração
 
 Copie o exemplo e ajuste somente caminhos pertencentes à biblioteca:

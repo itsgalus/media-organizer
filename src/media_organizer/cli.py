@@ -5,6 +5,8 @@ import logging
 import os
 import shutil
 import sys
+import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from media_organizer.audit import (
@@ -14,9 +16,22 @@ from media_organizer.audit import (
     write_audit_report,
 )
 from media_organizer.config import Config, ConfigurationError, load_config
-from media_organizer.models import MediaType, OperationStatus, PlannedOperation
+from media_organizer.models import FoundFile, OperationStatus, PlannedOperation
 from media_organizer.organizer import apply_plan
 from media_organizer.planner import build_plan, ensure_within
+from media_organizer.presentation import (
+    create_console,
+    determined_progress,
+    indeterminate_progress,
+    render_audit_summary,
+    render_confirmation,
+    render_doctor,
+    render_error,
+    render_message,
+    render_mode_banner,
+    render_operations,
+    render_summary,
+)
 from media_organizer.scanner import scan_files
 
 
@@ -97,54 +112,14 @@ def _configure_logging(verbose: bool) -> None:
         root_logger.setLevel(level)
 
 
-def _display_path(path: Path, config: Config) -> str:
-    try:
-        return str(path.resolve(strict=False).relative_to(config.media_root.resolve(strict=False)))
-    except ValueError:
-        return str(path)
-
-
-def _render_plan(operations: list[PlannedOperation], config: Config) -> None:
-    for operation in operations:
-        label = (
-            "CONFLICT"
-            if operation.status is OperationStatus.CONFLICT
-            else operation.media_type.value
+def _doctor(config: Config, *, quiet: bool) -> int:
+    console = create_console()
+    if not quiet:
+        render_mode_banner(
+            "DOCTOR",
+            "Checking configuration and filesystem.",
+            console=console,
         )
-        print(f"{label:<10} {_display_path(operation.source, config)}")
-        if operation.target:
-            target = _display_path(operation.target, config)
-            suffix = f" | {operation.conflict.reason}" if operation.conflict else ""
-            print(f"{'':<10} -> {target}{suffix}")
-        if operation.conflict and operation.target is None:
-            print(f"{'':<10} | {operation.conflict.reason}")
-        if operation.error:
-            print(f"{'':<10} | {operation.error}")
-
-
-def _render_summary(operations: list[PlannedOperation], *, include_execution: bool = False) -> None:
-    counts = {kind: sum(op.media_type is kind for op in operations) for kind in MediaType}
-    conflicts = sum(op.status is OperationStatus.CONFLICT for op in operations)
-    planned = sum(op.status is OperationStatus.PLANNED for op in operations)
-    print("Summary:")
-    print(f"  Movies: {counts[MediaType.MOVIE]}")
-    print(f"  Episodes: {counts[MediaType.EPISODE]}")
-    print(f"  Subtitles: {counts[MediaType.SUBTITLE]}")
-    print(f"  Unknown: {counts[MediaType.UNKNOWN]}")
-    print(f"  Conflicts: {conflicts}")
-    print(f"  Planned: {planned}")
-    if include_execution:
-        moved = sum(op.status is OperationStatus.MOVED for op in operations)
-        failed = sum(op.status is OperationStatus.FAILED for op in operations)
-        skipped = sum(
-            op.status in {OperationStatus.SKIPPED, OperationStatus.CONFLICT} for op in operations
-        )
-        print(f"  Moved: {moved}")
-        print(f"  Failed: {failed}")
-        print(f"  Skipped: {skipped}")
-
-
-def _doctor(config: Config) -> int:
     checks: list[tuple[str, bool, str]] = []
     root = config.media_root
     checks.append(("configuração válida", True, str(root)))
@@ -176,8 +151,7 @@ def _doctor(config: Config) -> int:
     checks.append(
         ("links simbólicos suspeitos", not suspicious, ", ".join(map(str, suspicious)) or "nenhum")
     )
-    for label, ok, detail in checks:
-        print(f"{'OK' if ok else 'FAIL'}  {label}: {detail}")
+    render_doctor(checks, console=console)
     return 0 if all(ok for _, ok, _ in checks) else 3
 
 
@@ -201,9 +175,12 @@ def _confirm_apply(operations: list[PlannedOperation]) -> bool:
     planned = sum(op.status is OperationStatus.PLANNED for op in operations)
     conflicts = sum(op.status is OperationStatus.CONFLICT for op in operations)
     ignored = sum(op.status is OperationStatus.SKIPPED for op in operations)
-    print(f"{planned} arquivo(s) serão movidos.")
-    print(f"{ignored} arquivo(s) serão ignorados.")
-    print(f"{conflicts} conflito(s) não será executado.")
+    render_confirmation(
+        planned=planned,
+        ignored=ignored,
+        conflicts=conflicts,
+        console=create_console(),
+    )
     try:
         answer = input("Continuar? [y/N] ")
     except EOFError:
@@ -211,20 +188,56 @@ def _confirm_apply(operations: list[PlannedOperation]) -> bool:
     return answer.strip().casefold() in {"y", "yes", "s", "sim"}
 
 
+def _count_files(files: Iterator[FoundFile], counter: list[int]) -> Iterator[FoundFile]:
+    for found_file in files:
+        counter[0] += 1
+        yield found_file
+
+
+def _build_measured_plan(
+    config: Config,
+    *,
+    quiet: bool,
+    description: str,
+) -> tuple[list[PlannedOperation], int, float]:
+    console = create_console()
+    counter = [0]
+    started = time.perf_counter()
+    files = _count_files(iter(scan_files(config)), counter)
+    if quiet:
+        operations = build_plan(files, config)
+    else:
+        with indeterminate_progress(description, console=console) as progress:
+            progress.add_task(description, total=None)
+            operations = build_plan(files, config)
+    return operations, counter[0], time.perf_counter() - started
+
+
 def _run_audit(args: argparse.Namespace, config: Config) -> int:
-    operations = build_plan(scan_files(config), config)
+    console = create_console()
+    if not args.quiet:
+        render_mode_banner(
+            "AUDIT MODE",
+            "No media files will be modified.",
+            console=console,
+        )
+    operations, processed, elapsed = _build_measured_plan(
+        config,
+        quiet=args.quiet,
+        description="Scanning incoming and planning operations...",
+    )
     report = build_audit_report(operations, config, report_format=args.format)
     write_audit_report(args.output, report)
     counts = audit_counts(operations)
-    if not args.quiet:
-        print("Audit complete.")
-    print(f"Report: {args.output.absolute()}")
-    print(f"Movies: {counts['movies']}")
-    print(f"Episodes: {counts['episodes']}")
-    print(f"Subtitles: {counts['subtitles']}")
-    print(f"Unknown: {counts['unknown']}")
-    print(f"Conflicts: {counts['conflicts']}")
-    print(f"Recognized: {counts['percentage']:.1f}%")
+    render_audit_summary(
+        counts,
+        report_path=args.output,
+        report_format=args.format,
+        processed=processed,
+        elapsed=elapsed,
+        console=console,
+        compact=args.quiet,
+    )
     return 0
 
 
@@ -233,45 +246,93 @@ def _run(argv: list[str] | None = None) -> int:
     _configure_logging(args.verbose)
     config = load_config(args.config)
     if args.command == "doctor":
-        return _doctor(config)
+        return _doctor(config, quiet=args.quiet)
     if args.command == "audit":
         return _run_audit(args, config)
 
-    operations = build_plan(scan_files(config), config)
+    console = create_console()
     if not args.quiet:
-        _render_plan(operations, config)
-    _render_summary(operations)
+        if args.command == "scan":
+            render_mode_banner("DRY RUN", "No files will be modified.", console=console)
+        else:
+            render_mode_banner(
+                "APPLY MODE",
+                "Files may be moved after confirmation.",
+                console=console,
+            )
+    operations, processed, elapsed = _build_measured_plan(
+        config,
+        quiet=args.quiet,
+        description="Scanning incoming and planning operations...",
+    )
+    if not args.quiet:
+        render_operations(operations, config, console=console)
+    render_summary(
+        operations,
+        console=console,
+        processed=processed,
+        elapsed=elapsed,
+        compact=args.quiet,
+    )
     if args.command == "scan":
         return 0
 
     runnable = sum(op.status is OperationStatus.PLANNED for op in operations)
     if not runnable:
         if not args.quiet:
-            print("Nenhuma operação segura para executar.")
-        _render_summary(operations, include_execution=True)
+            render_message(
+                "Nenhuma operação segura para executar.", console=console, style="yellow"
+            )
+        render_summary(
+            operations,
+            console=console,
+            include_execution=True,
+            compact=args.quiet,
+        )
         return 0
 
     if not args.yes and not _confirm_apply(operations):
         if not args.quiet:
-            print("Operação cancelada.")
+            render_message("Operação cancelada.", console=console, style="yellow")
         return 0
 
-    result = apply_plan(operations, config)
-    _render_summary(result.operations, include_execution=True)
+    apply_started = time.perf_counter()
+    if args.quiet or not console.is_terminal:
+        result = apply_plan(operations, config)
+    else:
+        with determined_progress(console=console) as progress:
+            task = progress.add_task("Moving files", total=runnable)
+            result = apply_plan(
+                operations,
+                config,
+                progress_callback=lambda _operation: progress.advance(task),
+            )
+    apply_elapsed = time.perf_counter() - apply_started
+    if not args.quiet:
+        render_operations(result.operations, config, console=console)
+    render_summary(
+        result.operations,
+        console=console,
+        include_execution=True,
+        processed=runnable,
+        elapsed=apply_elapsed,
+        compact=args.quiet,
+    )
     return 1 if result.failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    error_console = create_console(stderr=True)
     try:
         return _run(argv)
     except ConfigurationError as exc:
-        print(f"Erro de configuração: {exc}", file=sys.stderr)
+        render_error(f"Erro de configuração: {exc}", console=error_console)
         return 2
     except AuditReportError as exc:
-        print(f"Erro de relatório: {exc}", file=sys.stderr)
+        render_error(f"Erro de relatório: {exc}", console=error_console)
         return 2
     except KeyboardInterrupt:
-        print("Operação interrompida pelo usuário.", file=sys.stderr)
+        render_error("Operação interrompida pelo usuário.", console=error_console)
         return 130
 
 

@@ -10,7 +10,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "media-organizer contributors" }]
-dependencies = []
+dependencies = [
+    "rich>=13.9",
+]
 
 [project.optional-dependencies]
 dev = [

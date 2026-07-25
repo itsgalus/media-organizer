@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import stat
+from collections.abc import Callable
 from pathlib import Path
 
 from media_organizer.config import Config
@@ -14,7 +15,11 @@ from media_organizer.planner import UnsafePathError, ensure_within
 LOGGER = logging.getLogger("media_organizer")
 
 
-def apply_plan(operations: list[PlannedOperation], config: Config) -> ExecutionResult:
+def apply_plan(
+    operations: list[PlannedOperation],
+    config: Config,
+    progress_callback: Callable[[PlannedOperation], None] | None = None,
+) -> ExecutionResult:
     result = ExecutionResult(operations=operations)
     for operation in operations:
         if operation.status is not OperationStatus.PLANNED or operation.target is None:
@@ -34,6 +39,9 @@ def apply_plan(operations: list[PlannedOperation], config: Config) -> ExecutionR
         else:
             operation.status = OperationStatus.MOVED
             LOGGER.info("moved source=%s target=%s", operation.source, operation.target)
+        finally:
+            if progress_callback is not None:
+                progress_callback(operation)
     return result
 
 

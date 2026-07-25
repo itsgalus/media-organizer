@@ -370,3 +370,75 @@ def test_apply_with_zero_operations_does_not_prompt(
         lambda prompt: pytest.fail("não deve pedir confirmação sem operações"),
     )
     assert run_cli(config_path, "apply") == 0
+
+
+def test_rich_is_a_runtime_dependency() -> None:
+    with Path("pyproject.toml").open("rb") as project_file:
+        project = tomllib.load(project_file)
+    assert any(dependency.startswith("rich") for dependency in project["project"]["dependencies"])
+
+
+@pytest.mark.parametrize(
+    ("command", "title", "message"),
+    [
+        ("scan", "DRY RUN", "No files will be modified."),
+        ("apply", "APPLY MODE", "Files may be moved after confirmation."),
+        ("audit", "AUDIT MODE", "No media files will be modified."),
+        ("doctor", "DOCTOR", "Checking configuration and filesystem."),
+    ],
+)
+def test_mode_banners(
+    tmp_path: Path,
+    command: str,
+    title: str,
+    message: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = make_library(tmp_path)
+    arguments = [command]
+    if command == "audit":
+        arguments.extend(["--output", str(tmp_path / "audit.txt")])
+    assert run_cli(config_path, *arguments) in {0, 3}
+    output = capsys.readouterr().out
+    assert title in output
+    assert message in output
+
+
+def test_scan_table_and_metrics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert run_cli(config_path, "scan") == 0
+    output = capsys.readouterr().out
+    for value in ("Type", "Status", "Source", "Target", "Details", "Elapsed", "Processed", "Speed"):
+        assert value in output
+
+
+def test_quiet_has_no_banner_table_or_spinner(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    assert cli.main(["--config", str(config_path), "--quiet", "scan"]) == 0
+    output = capsys.readouterr().out
+    assert "DRY RUN" not in output
+    assert "Operations" not in output
+    assert "Scanning incoming" not in output
+    assert "Summary:" in output
+
+
+def test_apply_speed_uses_processed_operations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = make_library(tmp_path)
+    create_file(tmp_path, "Movie.2020.mkv")
+    timestamps = iter((0.0, 1.0, 10.0, 12.0))
+    monkeypatch.setattr(cli.time, "perf_counter", lambda: next(timestamps))
+
+    assert run_cli(config_path, "apply", "--yes") == 0
+
+    output = capsys.readouterr().out
+    assert "Processed: 1" in output
+    assert "Speed: 0.5 files/s" in output
+    assert "Speed: 0.0 files/s" not in output

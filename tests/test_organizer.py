@@ -432,6 +432,37 @@ def test_apply_plan_continues_after_safe_failure(tmp_path: Path) -> None:
     assert second_target.exists()
 
 
+def test_apply_plan_progress_callback_preserves_result(tmp_path: Path) -> None:
+    config, source, target = make_library(tmp_path)
+    operation = PlannedOperation(source, MediaType.MOVIE, target)
+    processed: list[PlannedOperation] = []
+
+    result = apply_plan([operation], config, progress_callback=processed.append)
+
+    assert result.moved == 1
+    assert processed == [operation]
+    assert processed[0].status is OperationStatus.MOVED
+
+
+def test_apply_plan_progress_callback_runs_after_each_eligible_operation(tmp_path: Path) -> None:
+    config, source, target = make_library(tmp_path)
+    missing = source.with_name("missing.mkv")
+    operations = [
+        PlannedOperation(missing, MediaType.MOVIE, target),
+        PlannedOperation(source, MediaType.MOVIE, target.with_name("second.mkv")),
+        PlannedOperation(source.with_name("ignored.mkv"), MediaType.UNKNOWN, None),
+    ]
+    processed: list[PlannedOperation] = []
+
+    apply_plan(operations, config, progress_callback=processed.append)
+
+    assert processed == operations[:2]
+    assert [operation.status for operation in processed] == [
+        OperationStatus.FAILED,
+        OperationStatus.MOVED,
+    ]
+
+
 def test_directory_fsync_unsupported_is_tolerated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
