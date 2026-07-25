@@ -1,384 +1,373 @@
 # Media Organizer
 
-Organizador local de filmes, séries e legendas com planejamento, auditoria,
-execução segura, histórico e undo.
+A safe local media organizer for movies, TV series, and subtitles with planning, auditing, execution history, and undo support.
 
-**Versão atual: 1.0.0**
+**Current version:** 1.0.0
 
-O Media Organizer trabalha localmente com bibliotecas Plex no Linux. Ele não usa
-rede, APIs, bancos de dados ou serviços externos.
+Media Organizer works entirely locally with Plex libraries on Linux. It does not require network access, APIs, databases, or external services.
 
-## Status do projeto
+## Project status
 
-A versão 1.0.0 é a primeira versão estável do núcleo funcional, validada por
-testes automatizados e por uma biblioteca real controlada. Faça backup antes de
-usar o programa em um acervo insubstituível.
+Version **1.0.0** is the first stable release of the core engine.
 
-Consulte [CHANGELOG.md](CHANGELOG.md) para as mudanças da versão.
+The project has been validated through **396 automated tests** and controlled real-world library runs.
 
-## Recursos principais
+Always keep an independent backup before organizing valuable or irreplaceable media collections.
 
-- `scan` somente leitura e `apply` com confirmação explícita;
-- organização de filmes, séries modernas e legadas e legendas;
-- associação contextual conservadora de legendas;
-- classificação de arquivos como `UNKNOWN` e detecção de conflitos;
-- diagnóstico com `doctor` e relatórios `audit` em texto ou TSV;
-- histórico persistente, `undo` seguro e lock de execução;
-- preview, progresso e resumos no terminal com Rich.
+See [CHANGELOG.md](CHANGELOG.md) for detailed release history.
 
-## Início rápido
+## Main features
+
+- Read-only planning with `scan`
+- Explicit execution with `apply`
+- Movie recognition
+- Modern TV episode recognition
+- Legacy TV episode recognition
+- Conservative contextual subtitle association
+- `UNKNOWN` classification
+- Conflict detection
+- Filesystem diagnostics with `doctor`
+- Audit reports in text and TSV formats
+- Persistent execution history
+- Safe undo
+- Exclusive execution lock
+- Rich terminal previews, progress, and summaries
+- Safe same-filesystem and cross-filesystem moves
+
+## Quick start
+
+Clone the repository:
+
+```bash
+git clone git@github.com:itsgalus/media-organizer.git
+cd media-organizer
+```
+
+Create a virtual environment:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-cp config.example.toml config.toml
+```
 
+Install the project:
+
+```bash
+.venv/bin/python -m pip install -e .
+```
+
+Create the configuration file:
+
+```bash
+cp config.example.toml config.toml
+```
+
+Edit `config.toml` and set your media root and directory names.
+
+Run diagnostics:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml doctor
+```
+
+Preview planned operations:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml scan
+```
+
+Generate an audit report:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml audit
+```
+
+Apply the approved plan:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml apply
+```
+
+Inspect execution history:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml history
+```
+
+Undo the latest eligible execution:
+
+```bash
 .venv/bin/python -m media_organizer --config config.toml undo
 ```
 
-Depois da instalação, o entry point `media-organizer` oferece os mesmos
-comandos.
+After installation, the `media-organizer` entry point provides the same commands.
 
-## Fluxo seguro recomendado
+## Commands
 
-1. Mantenha um backup independente.
-2. Verifique configuração e filesystem com `doctor`.
-3. Examine o plano somente leitura com `scan`.
-4. Gere uma evidência de revisão com `audit`.
-5. Revise todos os itens `UNKNOWN` e conflitos.
-6. Execute `apply` e confirme as operações.
-7. Consulte o registro com `history`.
-8. Use `undo` se precisar restaurar a execução.
+| Command | Description |
+|---|---|
+| `doctor` | Validate configuration and filesystem conditions |
+| `scan` | Preview organization without modifying files |
+| `apply` | Execute safe planned operations |
+| `audit` | Generate reviewable audit reports |
+| `history` | List recorded executions |
+| `undo` | Revert the latest eligible execution |
 
-O histórico auxilia a recuperação operacional, mas não substitui backup.
+## Recommended safe workflow
 
-## Requisitos e instalação
+1. Keep an independent backup.
+2. Run `doctor`.
+3. Run `scan`.
+4. Generate an `audit` report.
+5. Review all `UNKNOWN` items and conflicts.
+6. Run `apply`.
+7. Inspect the result with `history`.
+8. Use `undo` if restoration is required.
 
-- Python 3.12 ou superior
-- Linux (uso principal validado; os exemplos funcionam no Linux Mint)
+Execution history supports operational recovery, but it does not replace a backup.
 
-```bash
-git clone <url-do-repositorio> media-organizer
-cd media-organizer
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[dev]'
-```
+## Safety model
 
-O pacote instala o comando `media-organizer`. Também é possível executar
-`python -m media_organizer`.
+Media Organizer is intentionally conservative.
 
-## Interface Rich
+- Destination files are never overwritten.
+- Paths are validated before movement.
+- Path traversal is rejected.
+- Unsafe symbolic links are rejected.
+- Destination creation is exclusive.
+- Cross-filesystem moves use safe copying and synchronization.
+- Failed operations are rolled back individually when possible.
+- History records are written atomically.
+- `apply` and `undo` use an exclusive lock.
+- Undo is revalidated inside the lock immediately before execution.
+- Ambiguous files remain `UNKNOWN` instead of being guessed.
 
-A CLI usa Rich para oferecer saída colorida quando o terminal suporta, tabelas
-de operações e diagnóstico, resumos visuais, progresso e métricas de tempo e
-velocidade. A apresentação também funciona sem cores e quando a saída é
-redirecionada:
+## Configuration
 
-```bash
-media-organizer --config config.toml scan
-media-organizer --config config.toml apply
-media-organizer --config config.toml apply --yes
-media-organizer --config config.toml audit
-media-organizer --config config.toml --quiet scan
-NO_COLOR=1 media-organizer --config config.toml scan
-```
+The configuration file is TOML.
 
-Durante scan e audit, o progresso é indeterminado porque o total ainda não é
-conhecido. No apply, a barra usa o número real de operações planejadas.
-`--quiet` remove banners, tabelas e animações, mantendo um resumo compacto e
-estável. `--verbose` mantém logs INFO separados no stderr. A variável
-`NO_COLOR` desativa cores sem remover informação.
-
-Essa camada melhora apenas a apresentação; as regras de validação, conflitos e
-movimentação segura permanecem as mesmas.
-
-## Configuração
-
-Copie o exemplo e ajuste somente caminhos pertencentes à biblioteca:
-
-```bash
-cp config.example.toml config.toml
-```
+Example:
 
 ```toml
-media_root = "/mnt/media"
+media_root = "/path/to/media"
+
 incoming_dir = "incoming"
 movies_dir = "movies"
 series_dir = "series"
-
-video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".m4v", ".divx"]
-subtitle_extensions = [".srt", ".ass", ".ssa", ".vtt", ".sub"]
-
-preserve_technical_tags_for_movies = true
-preserve_technical_tags_for_series = false
 ```
 
-Os diretórios configurados devem ser relativos a `media_root`; caminhos
-absolutos e componentes `..` são rejeitados.
+Configured directories must:
 
-## Comandos
+- be relative paths;
+- not be empty;
+- not contain `..`;
+- not point to the media root itself;
+- not overlap or be nested inside each other.
 
-O comando seguro e padrão para inspeção é:
+See `config.example.toml` for the complete example.
 
-```bash
-media-organizer --config config.toml scan
-```
+## Supported media
 
-Ele não cria diretórios, move, renomeia ou remove arquivos.
+### Movies
 
-A varredura percorre `incoming` recursivamente e considera somente as extensões
-de vídeo e legenda configuradas. Arquivos e diretórios ocultos, além de links
-simbólicos, são ignorados. Itens auxiliares como JPG, NFO, TXT e ZIP permanecem
-intactos e não entram no pipeline.
+Movies are recognized conservatively from filenames containing a title and year.
 
-Séries legadas também podem usar uma pasta de série seguida por `Temporada 1`,
-`Season 01` ou `S01`, com arquivos numerados no início. Sequências locais
-começando em 1 são mantidas. Numeração absoluta só é convertida quando todos os
-vídeos numerados da temporada formam uma sequência contínua, sem duplicidades,
-com pelo menos dois arquivos; sequências ambíguas permanecem `UNKNOWN`.
-
-Legendas com nomes explícitos continuam tendo prioridade. Legendas genéricas em
-pastas `Subs`, `Subtitles`, `Legendas` e equivalentes podem ser associadas pelo
-contexto somente quando o contêiner de mídia possui exatamente um vídeo
-reconhecido. Idiomas presentes em subpastas e flags como `forced`, `sdh` e `cc`
-também são preservados; `german`, `ger`, `deu` e `de` são normalizados para
-`de`. Contêineres com zero ou vários vídeos permanecem `UNKNOWN`. Revise sempre
-o resultado com `scan` e `audit` antes de executar `apply`.
-
-Para aplicar apenas as operações sem conflito:
-
-```bash
-media-organizer --config config.toml apply
-media-organizer --config config.toml apply --yes
-```
-
-Sem `--yes`, é exigida confirmação interativa. Para diagnosticar diretórios,
-permissões, espaço, filesystem e links suspeitos:
-
-```bash
-media-organizer --config config.toml doctor
-```
-
-Use `--verbose` antes do subcomando para logs adicionais.
-
-## Uso real
-
-Comece sempre com uma biblioteca de teste e revise o plano antes de mover
-arquivos:
-
-```bash
-cp config.example.toml config.toml
-media-organizer --config config.toml doctor
-media-organizer --config config.toml scan
-media-organizer --config config.toml apply
-media-organizer --config config.toml apply --yes
-media-organizer --config config.toml --quiet scan
-media-organizer --config config.toml --verbose scan
-```
-
-`scan` apenas analisa e mostra o plano; `apply` realiza os movimentos seguros.
-Use `--yes` para pular a confirmação interativa e `--quiet` para ocultar as
-operações individuais. `--verbose` controla o detalhamento dos logs no stderr,
-enquanto `--quiet` reduz somente a saída normal no stdout.
-
-### Teste manual controlado
-
-O exemplo abaixo cria uma biblioteca descartável em `/tmp` e executa somente
-diagnóstico e scan:
-
-```bash
-rm -rf /tmp/media-organizer-demo
-mkdir -p /tmp/media-organizer-demo/incoming
-
-touch "/tmp/media-organizer-demo/incoming/Interstellar.2014.1080p.mkv"
-touch "/tmp/media-organizer-demo/incoming/Show.S01E01.mkv"
-touch "/tmp/media-organizer-demo/incoming/Show.S01E01.pt-BR.srt"
-
-cat > /tmp/media-organizer-demo/config.toml <<'EOF'
-media_root = "/tmp/media-organizer-demo"
-incoming_dir = "incoming"
-movies_dir = "movies"
-series_dir = "series"
-EOF
-
-media-organizer --config /tmp/media-organizer-demo/config.toml doctor
-media-organizer --config /tmp/media-organizer-demo/config.toml scan
-```
-
-Depois de revisar o plano, o apply pode ser executado separadamente:
-
-```bash
-media-organizer --config /tmp/media-organizer-demo/config.toml apply
-```
-
-## Audit de biblioteca
-
-O audit executa scanner e planner, mas nunca move arquivos. Ele gera uma
-evidência persistente para revisar itens `UNKNOWN`, conflitos e destinos antes
-do primeiro apply real:
-
-```bash
-media-organizer --config config.toml audit
-media-organizer --config config.toml audit --output audit-report.txt
-media-organizer --config config.toml audit --format tsv --output audit-report.tsv
-```
-
-O formato text é voltado à leitura humana; TSV facilita filtros e planilhas.
-Relatórios existentes não são sobrescritos. Arquivos JPG, NFO, TXT, ZIP e outras
-extensões não configuradas são ignorados, enquanto `UNKNOWN` e `CONFLICT` devem
-ser revisados. Guarde o relatório como evidência dessa revisão.
-
-### Validação real controlada
-
-Este fluxo cria arquivos vazios em uma biblioteca descartável e não executa
-apply:
-
-```bash
-rm -rf /tmp/media-organizer-real-test
-mkdir -p /tmp/media-organizer-real-test/incoming
-
-touch "/tmp/media-organizer-real-test/incoming/Interstellar.2014.1080p.mkv"
-touch "/tmp/media-organizer-real-test/incoming/Show.S01E01.mkv"
-touch "/tmp/media-organizer-real-test/incoming/Show.S01E01.pt-BR.srt"
-touch "/tmp/media-organizer-real-test/incoming/video-final-novo.mkv"
-touch "/tmp/media-organizer-real-test/incoming/poster.jpg"
-
-cat > /tmp/media-organizer-real-test/config.toml <<'EOF'
-media_root = "/tmp/media-organizer-real-test"
-incoming_dir = "incoming"
-movies_dir = "movies"
-series_dir = "series"
-EOF
-
-media-organizer --config /tmp/media-organizer-real-test/config.toml doctor
-media-organizer --config /tmp/media-organizer-real-test/config.toml audit --output /tmp/media-organizer-real-test-audit.txt
-cat /tmp/media-organizer-real-test-audit.txt
-```
-
-## Histórico e undo
-
-Cada `apply` que mover pelo menos um arquivo grava um JSON UTF-8 em
-`media_root/.media-organizer/history`. O registro contém somente operações
-realmente movidas, com caminhos relativos, tipo de mídia, tamanho e timestamp
-quando disponíveis.
-
-```bash
-media-organizer --config config.toml apply
-media-organizer --config config.toml history
-media-organizer --config config.toml history --limit 5
-media-organizer --config config.toml undo
-media-organizer --config config.toml undo --id EXECUTION_ID
-media-organizer --config config.toml undo --yes
-```
-
-O `undo` mostra um preview e valida todas as operações antes de mover qualquer
-arquivo: o destino atual precisa existir, a origem original deve estar livre e
-todos os caminhos devem permanecer dentro da biblioteca, sem links simbólicos
-intermediários. Nada é sobrescrito. Uma falha depois de parte do undo é
-registrada como `partially_undone` e exige revisão manual. Execuções completas
-usam `undone`; falhas antes da primeira restauração usam `undo_failed`.
-
-Um lock exclusivo em `.media-organizer/lock` impede `apply` e `undo`
-simultâneos. O histórico facilita recuperação operacional, mas não substitui
-backup. Use `scan` e `audit` antes do primeiro `apply` real.
-
-## Nomenclatura
-
-Filmes são organizados como:
+Example:
 
 ```text
-movies/Interstellar (2014)/Interstellar (2014) [2160p HDR BluRay REMUX].mkv
+Interstellar.2014.2160p.HDR.BluRay.REMUX.mkv
 ```
 
-O ano é obrigatório. Tags técnicas conhecidas são preservadas quando habilitado,
-mas grupos de release, hashes, URLs e ruído não são propagados.
-
-Episódios `S01E01`, `s01e01`, `1x01` e `S01E01E02` são aceitos:
+Planned destination:
 
 ```text
-series/Show Name/Season 01/Show Name S01E01.mkv
-series/Show Name/Season 01/Show Name S01E01-E02.mkv
+movies/Interstellar (2014)/Interstellar (2014).mkv
 ```
 
-Tags técnicas não entram no nome final dos episódios. Legendas compatíveis são
-colocadas ao lado do vídeo. Português, português brasileiro, `pt` e `pt-BR`
-viram `pt-BR`; inglês, `eng` e `en` viram `en`. Um idioma desconhecido não é
-inventado.
+Technical tags may be recognized for planning and presentation, including resolution, HDR, codec, source, audio, and edition markers.
 
-## Segurança
+### TV series
 
-- `scan` é somente leitura.
-- A origem e o destino são validados dentro da raiz configurada.
-- Links simbólicos de arquivo não são seguidos; links que escapam da raiz são
-  reportados pelo `doctor`.
-- Destinos existentes e destinos duplicados são conflitos e nunca são
-  sobrescritos.
-- O estado é revalidado imediatamente antes de cada movimento.
-- No mesmo filesystem, o destino é criado por hard link exclusivo antes da
-  remoção da origem. Entre filesystems, a cópia usa criação exclusiva,
-  sincronização e só então remove a origem.
-- Não há exclusão, substituição nem deduplicação destrutiva.
-- Uma falha é registrada e as operações independentes podem continuar.
+Modern episode patterns include:
 
-Mantenha backups: embora conservador, `apply` realiza movimentos reais.
+```text
+Show.S01E01.mkv
+Show.S01E01E02.mkv
+Show.1x04.mkv
+```
 
-## Limitações conhecidas
+Legacy directory-based patterns are also supported when the season context is explicit:
 
-- Não consulta serviços externos de metadata.
-- Não possui watch mode nem roda como daemon ou serviço.
-- Não associa legendas genéricas quando existem vários vídeos candidatos.
-- Heurísticas ambíguas permanecem `UNKNOWN`.
-- O undo não promete rollback global se uma falha operacional ocorrer depois de
-  restaurações parciais; o estado fica registrado para revisão.
-- O histórico não substitui backup.
-- O suporte principal foi validado em Linux.
+```text
+Show/Season 01/01 Episode Title.mkv
+Show/Temporada 3/57 Episode Title.avi
+```
+
+Absolute legacy numbering is only rebased when the sequence is complete and unambiguous.
+
+### Subtitles
+
+Supported subtitle extensions include:
+
+```text
+.srt
+.ass
+.ssa
+.vtt
+.sub
+```
+
+Recognized language aliases currently include:
+
+- Brazilian Portuguese: `pt-BR`
+- English: `en`
+- German: `de`
+
+Recognized flags include:
+
+- `forced`
+- `sdh`
+- `cc`
+
+Generic subtitles inside folders such as `Subs`, `Subtitles`, or `Legendas` can be associated contextually when exactly one compatible video exists.
+
+Ambiguous contextual subtitles remain `UNKNOWN`.
+
+## Audit reports
+
+The `audit` command creates a reviewable report without modifying media files.
+
+Text report:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  audit
+```
+
+TSV report:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  audit \
+  --format tsv \
+  --output media-audit.tsv
+```
+
+Reports include:
+
+- operation type;
+- status;
+- source;
+- target;
+- conflict reason;
+- error details;
+- recognition counters.
+
+## History and undo
+
+Successful `apply` executions are stored in:
+
+```text
+.media-organizer/history/
+```
+
+List recent executions:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  history
+```
+
+Limit the result:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  history \
+  --limit 5
+```
+
+Undo the latest eligible execution:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  undo
+```
+
+Undo a specific execution:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  undo \
+  --id EXECUTION_ID
+```
+
+Skip confirmation:
+
+```bash
+.venv/bin/python -m media_organizer \
+  --config config.toml \
+  undo \
+  --yes
+```
+
+Undo performs all collective safety validation before the first restore.
+
+If an operational failure occurs after some files have already been restored, the history records one of these states:
+
+```text
+undone
+partially_undone
+undo_failed
+```
+
+Manual review may be required after a partial undo.
+
+## Known limitations
+
+- No external metadata services are queried.
+- No watch mode is available yet.
+- The application does not currently run as a daemon or system service.
+- Generic subtitles are not associated automatically when multiple video candidates exist.
+- Ambiguous heuristics remain `UNKNOWN`.
+- Undo does not promise global rollback after partial restoration.
+- Execution history does not replace backup.
+- Primary validation has been performed on Linux.
 
 ## Roadmap
 
-Itens planejados, ainda sem versão definida:
+Planned future work:
 
 - watch mode;
-- integração opcional com metadata;
-- execução como serviço;
-- assistente de configuração;
-- distribuição e empacotamento;
-- interface web em etapa posterior.
+- optional metadata integration;
+- service execution;
+- configuration assistant;
+- packaging and distribution;
+- web interface at a later stage.
 
-## Testes
+## Tests
+
+Run the full quality suite:
 
 ```bash
 make check
 ```
 
-O projeto possui **396 testes automatizados**. `make check` executa lint,
-verificação de formatação e testes. A suíte usa diretórios temporários e não
-pressupõe a existência de `/mnt/media`.
+It executes:
 
-## Desenvolvimento
+- Ruff lint checks;
+- Ruff format verification;
+- Pytest.
 
-Os comandos usuais de desenvolvimento são padronizados pelo `Makefile`:
+The project currently has **396 automated tests**.
 
-```bash
-make install
-make lint
-make format
-make format-check
-make test
-make check
-make clean
-```
+Tests use temporary directories and do not depend on a real media library.
 
-`make install` instala o projeto e suas dependências de desenvolvimento no
-`.venv`. `make check` executa lint, verificação de formatação e testes. `make
-clean` remove somente caches Python e artefatos locais de build, sem remover o
-ambiente virtual ou a configuração local.
+## License
 
-Diretórios `__pycache__`, `.pytest_cache` e `*.egg-info` podem existir
-localmente durante o desenvolvimento, mas são ignorados pelo Git.
+MIT License.
+
