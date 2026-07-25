@@ -9,9 +9,12 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 from media_organizer.config import Config
 from media_organizer.models import MediaType, OperationStatus, PlannedOperation
+from media_organizer.parser import parse_episode
+from media_organizer.subtitles import parse_subtitle
 
 
 def create_console(*, stderr: bool = False) -> Console:
@@ -35,24 +38,161 @@ def render_operations(
     *,
     console: Console,
 ) -> None:
-    table = Table(title="Operations", show_lines=False)
-    table.add_column("Type", no_wrap=True)
-    table.add_column("Status", no_wrap=True)
-    table.add_column("Source", overflow="fold")
-    table.add_column("Target", overflow="fold")
-    table.add_column("Details", overflow="fold")
+    console.print(build_operations_tree(operations, config))
+
+
+def build_operations_tree(
+    operations: list[PlannedOperation],
+    config: Config,
+) -> Tree:
+    root = Tree(Text("Organization Preview", style="bold cyan"))
+    movies: dict[str, list[PlannedOperation]] = {}
+    series: dict[str, dict[str, list[PlannedOperation]]] = {}
+    unknown: list[PlannedOperation] = []
+
     for operation in operations:
-        details = operation.error or (
-            operation.conflict.reason if operation.conflict is not None else ""
+        category = _operation_category(operation, config)
+        if category == "movies":
+            movie = operation.target.parent.name if operation.target else operation.source.stem
+            movies.setdefault(movie, []).append(operation)
+        elif category == "series":
+            series_name, season = _series_location(operation, config)
+            series.setdefault(series_name, {}).setdefault(season, []).append(operation)
+        else:
+            unknown.append(operation)
+
+    if movies:
+        movies_node = root.add(Text("Movies", style="bold blue"))
+        for movie, movie_operations in movies.items():
+            movie_node = movies_node.add(Text(movie))
+            for operation in _media_first(movie_operations):
+                _add_operation(movie_node, operation, config)
+
+    if series:
+        series_root = root.add(Text("Series", style="bold blue"))
+        for series_name, seasons in series.items():
+            series_node = series_root.add(Text(series_name))
+            for season, season_operations in seasons.items():
+                season_node = series_node.add(Text(season))
+                episodes: dict[str, list[PlannedOperation]] = {}
+                for operation in season_operations:
+                    episode = _episode_name(operation)
+                    episodes.setdefault(episode, []).append(operation)
+                for episode, episode_operations in episodes.items():
+                    episode_node = season_node.add(Text(episode))
+                    for operation in _media_first(episode_operations):
+                        _add_operation(episode_node, operation, config)
+
+    if unknown:
+        unknown_root = root.add(Text("Unknown", style="bold yellow"))
+        for operation in unknown:
+            operation_node = unknown_root.add(Text(operation.source.name, style="yellow"))
+            source = Text("source: ")
+            source.append(display_path(operation.source, config))
+            operation_node.add(source)
+            _add_exception_details(operation_node, operation, config, include_paths=False)
+
+    return root
+
+
+def _operation_category(operation: PlannedOperation, config: Config) -> str:
+    if operation.media_type is MediaType.MOVIE:
+        return "movies"
+    if operation.media_type is MediaType.EPISODE:
+        return "series"
+    if operation.media_type is MediaType.UNKNOWN or operation.target is None:
+        return "unknown"
+    if _is_relative_to(operation.target, config.movies_path):
+        return "movies"
+    if _is_relative_to(operation.target, config.series_path):
+        return "series"
+    return "unknown"
+
+
+def _series_location(operation: PlannedOperation, config: Config) -> tuple[str, str]:
+    if operation.target is None:
+        return operation.source.stem, "Unknown Season"
+    try:
+        relative = operation.target.resolve(strict=False).relative_to(
+            config.series_path.resolve(strict=False)
         )
-        table.add_row(
-            Text(operation.media_type.value),
-            Text(operation.status.value, style=_status_style(operation)),
-            Text(display_path(operation.source, config)),
-            Text(display_path(operation.target, config)) if operation.target else Text(),
-            Text(details),
-        )
-    console.print(table)
+    except ValueError:
+        return operation.target.parent.parent.name, operation.target.parent.name
+    if len(relative.parts) >= 3:
+        return relative.parts[0], relative.parts[1]
+    return operation.target.parent.parent.name, operation.target.parent.name
+
+
+def _episode_name(operation: PlannedOperation) -> str:
+    if operation.media_type is MediaType.EPISODE:
+        episode = parse_episode(operation.source)
+    else:
+        subtitle = parse_subtitle(operation.source)
+        episode = subtitle.episode if subtitle is not None else None
+    if episode is not None:
+        return episode.episode_code
+    stem = operation.target.stem if operation.target else operation.source.stem
+    return stem.split(".", maxsplit=1)[0].rsplit(" ", maxsplit=1)[-1]
+
+
+def _add_operation(parent: Tree, operation: PlannedOperation, config: Config) -> None:
+    if operation.media_type is MediaType.SUBTITLE:
+        subtitle = parse_subtitle(operation.source)
+        language = subtitle.language if subtitle is not None else None
+        flags = subtitle.flags if subtitle is not None else ()
+        text = Text("Subtitle: ")
+        text.append(language or "unknown")
+        for flag in flags:
+            text.append(" · ")
+            text.append(flag)
+    else:
+        text = Text("Video")
+    if operation.status is not OperationStatus.PLANNED:
+        text.append(" [")
+        text.append(operation.status.value, style=_status_style(operation))
+        text.append("]")
+    node = parent.add(text)
+    _add_exception_details(node, operation, config)
+
+
+def _add_exception_details(
+    node: Tree,
+    operation: PlannedOperation,
+    config: Config,
+    *,
+    include_paths: bool = True,
+) -> None:
+    if operation.conflict is not None:
+        reason = Text("reason: ")
+        reason.append(operation.conflict.reason)
+        node.add(reason)
+    if operation.error:
+        error = Text("error: ")
+        error.append(operation.error)
+        node.add(error)
+    if include_paths and operation.status in {OperationStatus.CONFLICT, OperationStatus.FAILED}:
+        source = Text("source: ")
+        source.append(display_path(operation.source, config))
+        node.add(source)
+        if operation.target is not None:
+            target = Text("target: ")
+            target.append(display_path(operation.target, config))
+            node.add(target)
+
+
+def _media_first(operations: list[PlannedOperation]) -> list[PlannedOperation]:
+    return sorted(
+        operations,
+        key=lambda operation: operation.media_type is MediaType.SUBTITLE,
+    )
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(parent.resolve(strict=False))
+    except ValueError:
+        return False
+    return True
 
 
 def summary_counts(

@@ -252,7 +252,7 @@ def test_cli_scan_does_not_change_files(tmp_path: Path, capsys: pytest.CaptureFi
     after = movie.stat()
     assert movie.exists()
     assert before.st_mtime_ns == after.st_mtime_ns
-    assert "MOVIE" in capsys.readouterr().out
+    assert "Video" in capsys.readouterr().out
 
 
 def test_large_library_is_processed(tmp_path: Path) -> None:

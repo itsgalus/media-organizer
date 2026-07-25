@@ -132,7 +132,7 @@ def test_scan_does_not_modify_files(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert main(["--config", str(config_path), "scan"]) == 0
     assert source.read_bytes() == b"unchanged"
     assert not (tmp_path / "movies").exists()
-    assert "MOVIE" in capsys.readouterr().out
+    assert "Video" in capsys.readouterr().out
 
 
 def test_apply_moves_file(tmp_path: Path) -> None:

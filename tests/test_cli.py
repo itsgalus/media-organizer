@@ -64,7 +64,7 @@ def test_scan_with_movie(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     create_file(tmp_path, "Movie.2020.mkv")
     assert run_cli(config_path, "scan") == 0
     output = capsys.readouterr().out
-    assert "MOVIE" in output
+    assert "Video" in output
     assert "Movies: 1" in output
 
 
@@ -73,7 +73,7 @@ def test_scan_with_episode(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     create_file(tmp_path, "Show.S01E01.mkv")
     run_cli(config_path, "scan")
     output = capsys.readouterr().out
-    assert "EPISODE" in output
+    assert "S01E01" in output
     assert "Episodes: 1" in output
 
 
@@ -83,7 +83,7 @@ def test_scan_with_subtitle(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     create_file(tmp_path, "Show.S01E01.en.srt")
     run_cli(config_path, "scan")
     output = capsys.readouterr().out
-    assert "SUBTITLE" in output
+    assert "Subtitle: en" in output
     assert "Subtitles: 1" in output
 
 
@@ -92,7 +92,7 @@ def test_scan_with_unknown(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     create_file(tmp_path, "unknown.mkv")
     assert run_cli(config_path, "scan") == 0
     output = capsys.readouterr().out
-    assert "UNKNOWN" in output
+    assert "incoming/unknown.mkv" in output
     assert "Unknown: 1" in output
     assert "Planned: 0" in output
 
@@ -109,15 +109,14 @@ def test_scan_with_conflict(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     assert "destino já existe" in output
 
 
-def test_paths_are_relative_to_media_root(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_normal_preview_omits_paths(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = make_library(tmp_path)
     create_file(tmp_path, "Movie.2020.mkv")
     run_cli(config_path, "scan")
     output = capsys.readouterr().out
-    assert "incoming/Movie.2020.mkv" in output
-    assert "movies/Movie (2020)/Movie (2020).mkv" in output
+    assert "incoming/Movie.2020.mkv" not in output
+    assert "movies/Movie (2020)/Movie (2020).mkv" not in output
+    assert "Movie (2020)" in output
     assert str(tmp_path) not in output
 
 
@@ -404,12 +403,12 @@ def test_mode_banners(
     assert message in output
 
 
-def test_scan_table_and_metrics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_tree_and_metrics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config_path = make_library(tmp_path)
     create_file(tmp_path, "Movie.2020.mkv")
     assert run_cli(config_path, "scan") == 0
     output = capsys.readouterr().out
-    for value in ("Type", "Status", "Source", "Target", "Details", "Elapsed", "Processed", "Speed"):
+    for value in ("Organization Preview", "Movies", "Video", "Elapsed", "Processed", "Speed"):
         assert value in output
 
 
